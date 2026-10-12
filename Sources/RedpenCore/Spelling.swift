@@ -16,6 +16,9 @@ public enum Spelling {
                 let word = ns.substring(with: r.range)
                 if isName(word, at: r.range.location, in: ns) || acceptedElsewhere(word, checker) { continue }
                 let guesses = checker.guesses(forWordRange: r.range, in: text, language: "en", inSpellDocumentWithTag: 0) ?? []
+                // "ultrapure" -> "ultra pure", "sportsbook" -> "sports book": a real compound the dictionary
+                // splits, not a typo. Every letter is already in the right place.
+                if let g = guesses.first, isSplit(g, of: word) { continue }
                 out.append(Issue(range: r.range, kind: .spelling, message: guesses.isEmpty ? "Not in the dictionary" : "Did you mean \u{201C}\(guesses[0])\u{201D}?",
                                  replacements: Array(guesses.prefix(3)), original: word))
             } else if r.resultType == .grammar, let details = r.grammarDetails {
@@ -34,7 +37,7 @@ public enum Spelling {
 
     /// A capitalised word in the middle of a sentence is almost always a name (Pogacar, Sowell, Gangnam).
     /// Dictionaries miss most names, so only words at the start of a sentence are spell-checked when capitalised.
-    static func isName(_ word: String, at loc: Int, in ns: NSString) -> Bool {
+    public static func isName(_ word: String, at loc: Int, in ns: NSString) -> Bool {
         guard let f = word.unicodeScalars.first, CharacterSet.uppercaseLetters.contains(f) else { return false }
         var i = loc - 1
         while i >= 0, let c = UnicodeScalar(ns.character(at: i)), CharacterSet.whitespaces.contains(c) { i -= 1 }
@@ -58,6 +61,19 @@ public enum Spelling {
             if r.location == NSNotFound { return true }
         }
         return false
+    }
+
+    static func isSplit(_ guess: String, of word: String) -> Bool {
+        let joined = guess.replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "-", with: "")
+        return joined.caseInsensitiveCompare(word.replacingOccurrences(of: "-", with: "")) == .orderedSame
+            && guess.count > word.replacingOccurrences(of: "-", with: "").count
+            // Both halves must be real words of some length: "alot" -> "a lot" is still a mistake.
+            && guess.split(whereSeparator: { $0 == " " || $0 == "-" }).allSatisfy { $0.count >= 3 }
+    }
+
+    /// True when the word is in the Mac dictionary as written ("their" yes, "american" no).
+    @MainActor static func isWord(_ word: String) -> Bool {
+        NSSpellChecker.shared.checkSpelling(of: word, startingAt: 0).location == NSNotFound
     }
 
     @MainActor public static func learn(_ word: String) { NSSpellChecker.shared.learnWord(word) }

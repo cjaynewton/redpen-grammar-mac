@@ -188,8 +188,9 @@ final class Watcher {
             }
         }
         let spelling = Engine.spellingAgreed(quickIssues, lt: ltIssues)
-        var all = Engine.merge(spelling, ltIssues.filter { $0.kind != .spelling })
-        all = Engine.merge(all, model)
+        var all = Engine.merge(spelling, Engine.protectNames(ltIssues.filter { $0.kind != .spelling }, in: text))
+        all = Engine.merge(all, Engine.protectNames(model, in: text))
+        all = Engine.outsideQuotes(all, in: text)
         // Drop anything that no longer matches the text (it was edited since the check).
         all = all.filter { NSMaxRange($0.range) <= ns.length && ns.substring(with: $0.range) == $0.original }
         all = all.filter { !ignored.contains($0.ignoreKey) }

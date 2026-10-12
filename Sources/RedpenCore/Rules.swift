@@ -77,6 +77,9 @@ public enum Rules {
         "however", "still", "also", "and", "but", "or", "honestly", "frankly", "first", "second", "finally", "today",
         "yesterday", "tomorrow", "here", "there", "please", "thanks", "ok", "okay", "sure", "oh", "hi", "hey", "dear"]
 
+    static let timeWords: Set<String> = ["year", "years", "month", "months", "week", "weeks", "day", "days", "morning",
+        "night", "season", "seasons", "decade", "decades", "spring", "summer", "fall", "autumn", "winter", "quarter", "time"]
+
     static func spliceIssues(_ text: String) -> [Issue] {
         var out: [Issue] = []
         text.enumerateSubstrings(in: text.startIndex..., options: .bySentences) { s, sr, _, _ in
@@ -88,7 +91,9 @@ public enum Rules {
                 if NSMaxRange(m.range) < sns.length, sns.character(at: NSMaxRange(m.range)) == 44 { continue }
                 let before = sns.substring(to: m.range.location)
                 let words = before.split(whereSeparator: { $0 == " " }).map { $0.lowercased().trimmingCharacters(in: .punctuationCharacters) }
-                guard words.count >= 3, let first = words.first, !openers.contains(first), !first.hasSuffix("ing"),
+                // "The following year, they won": a time phrase introducing the sentence, not a second sentence.
+                let timeIntro = words.count <= 4 && words.last.map { timeWords.contains($0) } == true
+                guard words.count >= 3, let first = words.first, !openers.contains(first), !first.hasSuffix("ing"), !timeIntro,
                       !before.contains(",") else { continue }
                 let pronoun = sns.substring(with: m.range(at: 1))
                 let span = NSRange(location: base + m.range.location, length: 2 + (pronoun as NSString).length)

@@ -8,9 +8,10 @@ public enum LanguageTool {
     static let disabledRules = [
         "DASH_RULE", "EN_QUOTES", "WHITESPACE_RULE", "PUNCTUATION_PARAGRAPH_END", "ARROWS", "EN_UNPAIRED_QUOTES",
         "UPPERCASE_SENTENCE_START", "COMMA_PARENTHESIS_WHITESPACE", "DOUBLE_PUNCTUATION", "MULTIPLICATION_SIGN",
-        "ENGLISH_WORD_REPEAT_BEGINNING_RULE", "EN_REPEATEDWORDS_PROBLEM",
+        "ENGLISH_WORD_REPEAT_BEGINNING_RULE", "EN_REPEATEDWORDS_PROBLEM", "COMMA_COMPOUND_SENTENCE",
+        "COMMA_COMPOUND_SENTENCE_2",
     ]
-    static let disabledCategories = ["TYPOGRAPHY", "STYLE", "REDUNDANCY", "CASING", "REPETITIONS_STYLE"]
+    static let disabledCategories = ["TYPOGRAPHY", "STYLE", "REDUNDANCY", "CASING", "REPETITIONS_STYLE", "PROPER_NOUNS"]
 
     struct Response: Decodable {
         struct Match: Decodable {
@@ -55,6 +56,8 @@ public enum LanguageTool {
         return res.matches.compactMap { m in
             let r = NSRange(location: m.offset, length: m.length)
             guard NSMaxRange(r) <= ns.length, r.length > 0 else { return nil }
+            // "protege" and "protégé" are both correct English; accents are optional.
+            if m.rule.id.hasPrefix("EN_DIACRITICS") { return nil }
             // Only the dictionary rules are spelling. LanguageTool also tags confused words ("Your going") as
             // "misspelling", and those must survive the Mac-dictionary agreement check.
             let speller = m.rule.id.hasPrefix("MORFOLOGIK") || m.rule.id.contains("SPELLER") || m.rule.id.hasPrefix("HUNSPELL")

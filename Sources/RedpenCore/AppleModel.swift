@@ -56,9 +56,11 @@ public enum AppleModel {
             let session = LanguageModelSession(instructions: rewriteInstructions)
             guard let fixed = try? await session.respond(to: trimmed, options: GenerationOptions(temperature: 0)).content
             else { continue }
-            let edits = Diff.edits(from: trimmed, to: fixed.trimmingCharacters(in: .whitespacesAndNewlines)).filter(plausible)
-            // More than two changes in one sentence means the model rewrote it rather than corrected it.
-            guard edits.count <= 2 else { continue }
+            let all = Diff.edits(from: trimmed, to: fixed.trimmingCharacters(in: .whitespacesAndNewlines))
+            // One implausible change means the model misread the sentence, so none of its changes are trusted.
+            // More than two changes means it rewrote the sentence rather than corrected it.
+            guard all.allSatisfy(plausible), all.count <= 2 else { continue }
+            let edits = all
             let lead = (s as NSString).range(of: trimmed).location
             for e in edits where await confirmed(trimmed, e) {
                 var e = e; e.range = e.range.shifted(by: base + lead); out.append(e)
@@ -105,6 +107,11 @@ public enum AppleModel {
     static func plausible(_ e: Issue) -> Bool {
         guard let r = e.replacements.first else { return true }
         if r.contains(".") || r.contains("?") || r.contains("!") { return false }
+        // Slipping in "was", "been" or "is" ("not made" -> "not been made") turns a deliberate fragment into a sentence.
+        let aux: Set<String> = ["be", "been", "was", "were", "is", "are", "am"]
+        let rWords = r.lowercased().split(separator: " ").map(String.init)
+        let oWords = e.original.lowercased().split(separator: " ").map(String.init)
+        if rWords.count == oWords.count + 1, rWords.filter({ !oWords.contains($0) }).allSatisfy({ aux.contains($0) }) { return false }
         // The model sometimes invents a phrase ("test" became "test could not be run"). A correction adds one word at most.
         if r.split(separator: " ").count - e.original.split(separator: " ").count > 1 { return false }
         // Expanding a contraction ("We're" to "We are") is style.
