@@ -1,0 +1,9 @@
+.build/
+.build-*/
+build/
+.local.env
+.DS_Store
+.swiftpm/
+# Private notes and test sets built from personal writing
+CHECKLIST.md
+Tests/private/

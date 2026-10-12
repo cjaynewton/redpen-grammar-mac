@@ -1,0 +1,99 @@
+# Redpen for Mac
+
+A free, private writing checker for macOS. It underlines mistakes as you type in almost any app (Mail, Notes, Word, Chrome, Slack, even Terminal), and each fix explains the rule so you make the mistake less often.
+
+Everything runs on your Mac. Your writing is never sent anywhere unless you choose **Deep check with Claude**.
+
+<!-- Screenshot: docs/screenshot.png (an underline and the fix card in TextEdit) -->
+
+## What it does
+
+- **Red underline:** spelling. **Blue:** grammar. **Purple:** your own house-style rules (optional).
+- **Click an underline** to see the fix, a one-line reason and an example. One click applies it.
+- **Your patterns** (in the menu) shows which mistakes keep coming back this week, and whether each is going up or down. The record stays on your Mac and holds only the flagged words and the fix, never your surrounding text.
+- **Terminal:** when you type a sentence (not a command) in Terminal, iTerm, Warp, Ghostty and others, a small bubble offers to fix it.
+- **Deep check with Claude** (optional): sends the paragraph you're in to Claude through [Claude Code](https://claude.com/claude-code) and your Claude subscription, then shows a revised version and a list of changes.
+
+Redpen never reads password managers, password fields, or browser windows whose title mentions a bank.
+
+## How it checks
+
+Three engines, all local, combined so each covers the others' blind spots:
+
+1. **Apple's spell checker**, built into macOS.
+2. **[LanguageTool](https://languagetool.org)**, the open-source grammar engine, running on your Mac (port 8081). A word only counts as misspelled when the Mac dictionary agrees, so names and trade words don't light up.
+3. **Apple's on-device language model** (Apple Intelligence) for errors that need meaning: commonly confused words (compliment / complement, principle / principal), verb forms, missing words. The model checks one sentence at a time, and a second pass must confirm each change, which keeps it from rewriting good sentences.
+
+## How good is it?
+
+Measured with the test runner in this repo (see Development below):
+
+| Test | Result |
+|---|---|
+| 100 short sentences with planted mistakes (spelling, grammar, confused words, 15 house-style) | 98 caught |
+| 35 correct sentences | 0 wrongly flagged |
+| 120 paragraphs of published, edited writing | 11 flagged (Grammarly's free checker flagged 35 of the same 120) |
+
+The published-writing test isn't included because it uses someone's own articles. Bring your own: put one paragraph per line in a file as `clean<TAB>paragraph<TAB>` and run `swift run redpen-test --blind-file yourfile.tsv`. Any flag on edited writing is a likely false alarm.
+
+## Install
+
+You need **macOS 26 or later**, **Xcode** (free, from the Mac App Store; open it once after installing), and **[Homebrew](https://brew.sh)** for the grammar engine. **Apple Intelligence** turned on is recommended: without it Redpen still runs, minus the confused-word and meaning checks.
+
+```sh
+git clone https://github.com/cjaynewton/redpen-mac.git
+cd redpen-mac
+./install.sh
+```
+
+`install.sh` installs LanguageTool with Homebrew, starts it (and at every login), builds Redpen into `~/Applications`, and opens it. A welcome window walks you through the one permission macOS needs (**Accessibility**, so Redpen can read what you type).
+
+No Homebrew? Run `./build.sh` instead. Spelling and basic grammar still work without LanguageTool.
+
+### Rebuilding without re-granting permission
+
+By default the app is ad-hoc signed, and macOS may ask you to allow Accessibility again after each rebuild. If you have an Apple Development certificate (free with an Apple ID in Xcode), create a `.local.env` file next to `build.sh`:
+
+```sh
+REDPEN_SIGN_ID="Apple Development"
+```
+
+## House style (optional)
+
+House style is for rules that aren't grammar: a personal or team style guide. All of it is off until you turn it on in **Settings**:
+
+- No dashes (em dash, spaced en dash, `--`)
+- Colons only for labels and lists, not to join two thoughts
+- Vague words to flag in long writing (for example *framework*, *ecosystem*, *leverage*)
+- Phrases to cut (for example *to be clear,*)
+- Flag sentences that came through in another language (handy with voice typing)
+- Notes for the Claude deep check
+
+[`examples/house-style-example.json`](examples/house-style-example.json) has a full example. Settings live in `~/Library/Application Support/Redpen/config.json`.
+
+## Development
+
+Apple's model framework needs Xcode's toolchain, so point Swift at it first:
+
+```sh
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+./build.sh                     # build and install the app
+swift run redpen-test          # built-in test sentences
+swift run redpen-test --blind  # also --held-out, --blind2, --blind-file <tsv>, --patterns
+```
+
+Code layout:
+
+- `Sources/RedpenCore`: the checking engine (rules, LanguageTool client, Apple model, lessons, mistake log). No UI.
+- `Sources/Redpen`: the menu-bar app (Accessibility watcher, underline overlay, fix card, Terminal mode, settings).
+- `Sources/redpen-test`: the test runner.
+
+The test sets were written before tuning and the blind sets were scored once. If you change the engine, write new test sentences rather than tuning on the existing ones.
+
+## Not affiliated
+
+Redpen for Mac is an independent project. It is not related to [RedPen](https://redpen.cc), the open-source proofreading tool for technical documents, or to Grammarly.
+
+## License
+
+MIT. See [LICENSE](LICENSE). LanguageTool is a separate program under its own license (LGPL); Redpen talks to it over a local connection and does not include it.

@@ -1,0 +1,32 @@
+{
+  "houseStyle": {
+    "noDashes": true,
+    "colonsOnlyForLabels": true,
+    "containerWords": [
+      "artifact",
+      "landscape",
+      "framework",
+      "paradigm",
+      "ecosystem",
+      "leverage",
+      "leverages",
+      "leveraging",
+      "trajectory",
+      "delve",
+      "delves",
+      "tapestry",
+      "synergy",
+      "holistic",
+      "robust",
+      "seamless",
+      "seamlessly"
+    ],
+    "disclaimers": [
+      "nobody is lying here",
+      "this is not a conspiracy",
+      "to be clear,"
+    ],
+    "flagOtherLanguages": true,
+    "deepCheckNotes": "Keep short sentences. Do not add new ideas."
+  }
+}
