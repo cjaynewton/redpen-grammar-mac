@@ -77,7 +77,7 @@ func run() async {
     var cases = CommandLine.arguments.contains("--held-out") ? heldOut : cases
     if let i = CommandLine.arguments.firstIndex(where: { $0.hasPrefix("--blind") }) {
         let a = CommandLine.arguments
-        let file = a[i] == "--blind2" ? "Tests/blind2.tsv" : a[i] == "--blind-file" ? a[i + 1] : "Tests/blind.tsv"
+        let file = a[i] == "--blind2" ? "Tests/blind2.tsv" : a[i] == "--blind3" ? "Tests/blind3.tsv" : a[i] == "--blind-file" ? a[i + 1] : "Tests/blind.tsv"
         let tsv = try! String(contentsOfFile: file, encoding: .utf8)
         cases = tsv.split(separator: "\n").map { line in
             let f = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
@@ -117,7 +117,8 @@ func run() async {
         }
     }
     print("\nScore")
-    for g in ["spelling", "grammar", "rules"] { let v = caught[g] ?? (0, 0); print("  \(g): \(v.0)/\(v.1)") }
+    let groups = ["spelling", "grammar", "rules"] + caught.keys.filter { !["spelling", "grammar", "rules"].contains($0) }.sorted()
+    for g in groups { let v = caught[g] ?? (0, 0); print("  \(g): \(v.0)/\(v.1)") }
     print("  clean sentences wrongly flagged: \(falsePos)/\(cleanTotal)")
     print("  clean sentences flagged by house-style rules only: \(ruleFlags)/\(cleanTotal)")
     print("  caught mistakes that come with a lesson: \(taught)/\(caughtTotal)")
