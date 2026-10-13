@@ -95,6 +95,9 @@ public enum Lessons {
     static let hyphen = make("compound-modifier", "a two-year contract",
         "Two words that describe a noun together take a hyphen. After the noun they don't.",
         "a two-year contract / the contract runs two years")
+    static let canadian = make("canadian-spelling", "Canadian spelling",
+        "Canadian English keeps the British -our and -re (colour, centre, defence) but uses -ize (organize, realize).",
+        "The colour of the centre display.")
     static let compound = make("compound-word", "one word or two",
         "One word is the thing (the setup, a login, the backup). Two words is the action (set up the display, log in, back up the file).",
         "Set up the booth before the setup inspection.")
@@ -164,6 +167,7 @@ public enum Lessons {
             return nil
         case .spelling:
             guard !replacement.isEmpty else { return nil }
+            if msg.hasPrefix("canadian spelling") { return canadian }
             if replacement == "a lot" { return pairs.first { $0.1.id == "a-lot" }?.1 }
             let trick = tricks[replacement] ?? "Spelled \u{201C}\(replacement)\u{201D}."
             return make("spell-\(replacement)", "spelling \u{201C}\(replacement)\u{201D}", trick, "")
@@ -237,7 +241,7 @@ public enum Lessons {
 
     /// Fixed lessons by id, for the patterns page. Spelling and confused-pair lessons are rebuilt from the id.
     public static func byID(_ id: String) -> Lesson? {
-        let fixed = pairs.map(\.1) + [pronounCase, agreement, tense, fewer, doubleNegative, splice, dangling, subjunctive, hyphen, compound, dash, colon, container, defensive, language]
+        let fixed = pairs.map(\.1) + [pronounCase, agreement, tense, fewer, doubleNegative, splice, canadian, dangling, subjunctive, hyphen, compound, dash, colon, container, defensive, language]
         if let l = fixed.first(where: { $0.id == id }) { return l }
         if id.hasPrefix("spell-") {
             let w = String(id.dropFirst(6))

@@ -13,6 +13,9 @@ public struct HouseStyle: Codable, Sendable, Equatable {
     public var disclaimers: [String] = []
     /// Flag sentences written in another language (useful with voice typing) and offer an English version.
     public var flagOtherLanguages = false
+    /// Hold spelling to one English: "en_CA", "en_US" or "en_GB". Empty accepts all three.
+    /// With "en_CA", "color" is flagged and "colour" suggested.
+    public var spelling = ""
     /// Extra instructions for "Deep check with Claude", e.g. "Keep my short sentences."
     public var deepCheckNotes = ""
 
@@ -26,6 +29,7 @@ public struct HouseStyle: Codable, Sendable, Equatable {
         containerWords = try c.decodeIfPresent([String].self, forKey: .containerWords) ?? d.containerWords
         disclaimers = try c.decodeIfPresent([String].self, forKey: .disclaimers) ?? d.disclaimers
         flagOtherLanguages = try c.decodeIfPresent(Bool.self, forKey: .flagOtherLanguages) ?? d.flagOtherLanguages
+        spelling = try c.decodeIfPresent(String.self, forKey: .spelling) ?? d.spelling
         deepCheckNotes = try c.decodeIfPresent(String.self, forKey: .deepCheckNotes) ?? d.deepCheckNotes
     }
 
@@ -39,10 +43,11 @@ public struct HouseStyle: Codable, Sendable, Equatable {
                             "seamless", "seamlessly"]
         s.disclaimers = ["nobody is lying here", "this is not a conspiracy", "to be clear,"]
         s.flagOtherLanguages = true
+        s.spelling = "en_CA"
         return s
     }()
 
     public var isEmpty: Bool {
-        !noDashes && !colonsOnlyForLabels && containerWords.isEmpty && disclaimers.isEmpty && !flagOtherLanguages
+        !noDashes && !colonsOnlyForLabels && containerWords.isEmpty && disclaimers.isEmpty && !flagOtherLanguages && spelling.isEmpty
     }
 }

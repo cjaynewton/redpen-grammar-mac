@@ -51,6 +51,12 @@ struct SettingsView: View {
                 Toggle("No dashes (em dash, spaced en dash, --)", isOn: $model.config.houseStyle.noDashes)
                 Toggle("Colons only for labels and lists", isOn: $model.config.houseStyle.colonsOnlyForLabels)
                 Toggle("Flag sentences in another language", isOn: $model.config.houseStyle.flagOtherLanguages)
+                Picker("Spelling", selection: $model.config.houseStyle.spelling) {
+                    Text("Any English").tag("")
+                    Text("Canadian (colour, centre)").tag("en_CA")
+                    Text("American (color, center)").tag("en_US")
+                    Text("British (colour, organise)").tag("en_GB")
+                }
                 TextField("Vague words to flag in long writing", text: model.list(\.containerWords), prompt: Text("framework, ecosystem, leverage"), axis: .vertical)
                 TextField("Phrases to cut", text: model.list(\.disclaimers), prompt: Text("to be clear,"), axis: .vertical)
                 Button("Use the example style") { model.config.houseStyle = .example }

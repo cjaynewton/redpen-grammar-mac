@@ -67,6 +67,7 @@ House style is for rules that aren't grammar: a personal or team style guide. Al
 - Vague words to flag in long writing (for example *framework*, *ecosystem*, *leverage*)
 - Phrases to cut (for example *to be clear,*)
 - Flag sentences that came through in another language (handy with voice typing)
+- Hold spelling to one English: Canadian (colour, centre), American or British
 - Notes for the Claude deep check
 
 [`examples/house-style-example.json`](examples/house-style-example.json) has a full example. Settings live in `~/Library/Application Support/Redpen/config.json`.

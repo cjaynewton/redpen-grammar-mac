@@ -4,7 +4,8 @@ public enum Engine {
     /// Instant layer: Mac spelling and grammar plus the hard rules. Ranges are relative to `text`.
     @MainActor
     public static func quick(_ text: String, longform: Bool, style: HouseStyle = HouseStyle()) -> [Issue] {
-        outsideQuotes(merge(Spelling.check(text), Rules.check(text, longform: longform, style: style)), in: text)
+        outsideQuotes(merge(merge(Spelling.check(text), Spelling.dialect(text, style.spelling)),
+                            Rules.check(text, longform: longform, style: style)), in: text)
     }
 
     /// Full check of one paragraph, including Apple's model and translations. Used by the test and by
@@ -14,6 +15,7 @@ public enum Engine {
         let lt = await LanguageTool.check(text)
         var issues = merge(spellingAgreed(Spelling.check(text), lt: lt),
                            protectNames(lt.filter { $0.kind != .spelling }, in: text))
+        issues = merge(issues, Spelling.dialect(text, style.spelling))
         issues = merge(issues, Rules.check(text, longform: longform, style: style))
         issues = merge(issues, protectNames(await deep(text), in: text))
         return await fillTranslations(outsideQuotes(issues, in: text))

@@ -63,6 +63,49 @@ public enum Spelling {
         return false
     }
 
+    public static let dialectNames = ["en_CA": "Canadian", "en_US": "American", "en_GB": "British"]
+
+    /// Words spelled for another English when the writer has picked one ("color" in Canadian English).
+    /// Only words another English accepts: plain typos are left to `check`.
+    @MainActor
+    public static func dialect(_ text: String, _ lang: String) -> [Issue] {
+        guard let name = dialectNames[lang] else { return [] }
+        let checker = NSSpellChecker.shared
+        let ns = text as NSString
+        var out: [Issue] = []
+        text.enumerateSubstrings(in: text.startIndex..., options: .byWords) { w, wr, _, _ in
+            guard let w, w.count >= 3, w.allSatisfy({ $0.isLetter }) else { return }
+            let r = NSRange(wr, in: text)
+            if isName(w, at: r.location, in: ns) { return }
+            func ok(_ s: String, _ l: String) -> Bool {
+                checker.checkSpelling(of: s, startingAt: 0, language: l, wrap: false, inSpellDocumentWithTag: 0, wordCount: nil).location == NSNotFound
+            }
+            guard !ok(w, lang), dialectNames.keys.contains(where: { $0 != lang && ok(w, $0) }) else { return }
+            guard let fix = dialectFix(w, lang, ok) else { return }
+            out.append(Issue(range: r, kind: .spelling, message: "\(name) spelling: \u{201C}\(fix)\u{201D}.",
+                             replacements: [fix], original: w))
+        }
+        return out
+    }
+
+    /// The same word in the chosen English: color -> colour, center -> centre, defense -> defence.
+    static func dialectFix(_ w: String, _ lang: String, _ ok: (String, String) -> Bool) -> String? {
+        let lower = w.lowercased()
+        var c: [String] = []
+        func swap(_ a: String, _ b: String) {
+            var search = lower.startIndex..<lower.endIndex
+            while let r = lower.range(of: a, range: search) {
+                c.append(lower.replacingCharacters(in: r, with: b)); search = r.upperBound..<lower.endIndex
+            }
+        }
+        for (a, b) in [("our", "or"), ("or", "our"), ("re", "er"), ("er", "re"), ("ce", "se"), ("se", "ce"), ("ize", "ise"),
+                       ("ise", "ize"), ("og", "ogue"), ("ogue", "og"), ("ll", "l"), ("l", "ll"), ("ae", "e"), ("oe", "e")] { swap(a, b) }
+        c += NSSpellChecker.shared.guesses(forWordRange: NSRange(location: 0, length: (lower as NSString).length), in: lower,
+                                           language: lang, inSpellDocumentWithTag: 0) ?? []
+        guard let fix = c.first(where: { $0 != lower && ok($0, lang) && Lessons.editDistance($0, lower) <= 2 }) else { return nil }
+        return w.first?.isUppercase == true ? fix.prefix(1).uppercased() + fix.dropFirst() : fix
+    }
+
     static func isSplit(_ guess: String, of word: String) -> Bool {
         let joined = guess.replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "-", with: "")
         return joined.caseInsensitiveCompare(word.replacingOccurrences(of: "-", with: "")) == .orderedSame
