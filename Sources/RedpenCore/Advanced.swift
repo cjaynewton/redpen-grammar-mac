@@ -193,7 +193,7 @@ public enum Advanced {
         for o in danglingOpeners(text) where await AppleModel.cannotDo(o.subject, o.phrase) {
             out.append({
                 var i = Issue(range: o.range, kind: .grammar,
-                              message: "Dangling modifier: \u{201C}\(o.subject)\u{201D} didn't do this. Put whoever did it right after the comma.",
+                              message: "Dangling modifier. \u{201C}\(o.subject.prefix(1).uppercased() + o.subject.dropFirst())\u{201D} didn\u{2019}t do this. Name whoever did, right after the comma.",
                               replacements: [], original: o.phrase)
                 i.tentative = true
                 return i

@@ -256,30 +256,46 @@ final class Watcher {
     }
 
     private func showPanel(_ issue: Issue, _ el: AXUIElement, _ anchor: CGRect) {
-        var choices: [SuggestionPanel.Choice] = issue.replacements.prefix(3).map { rep in
-            let shown = rep.isEmpty ? "Delete \u{201C}\(issue.original)\u{201D}" : rep.trimmingCharacters(in: .whitespaces)
-            return .init(title: shown.isEmpty ? "Replace" : shown, primary: true) { [weak self] in
-                self?.apply(issue, rep, in: el)
-            }
+        let reps = issue.replacements.prefix(3).map { $0 }
+        func shown(_ rep: String) -> String {
+            let t = rep.trimmingCharacters(in: .whitespaces)
+            return rep.isEmpty ? "Cut it" : t.isEmpty ? "Replace" : t
         }
+        func use(_ rep: String) -> SuggestionPanel.Choice {
+            .init(title: rep.isEmpty ? "Cut it" : "Use \u{201C}\(shown(rep))\u{201D}") { [weak self] in self?.apply(issue, rep, in: el) }
+        }
+        var footer: [SuggestionPanel.Choice] = []
         if issue.kind == .spelling {
-            choices.append(.init(title: "Add \u{201C}\(issue.original)\u{201D} to dictionary", primary: false) { [weak self] in
+            footer.append(.init(title: "Add to dictionary") { [weak self] in
                 Spelling.learn(issue.original); self?.lastQuickAt = .distantPast
             })
         }
-        choices.append(.init(title: "Ignore", primary: false) { [weak self] in self?.ignored.insert(issue.ignoreKey) })
-        panel.show(title: issue.label, color: issue.color, message: issue.message, detail: lessonText(issue),
-                   choices: choices, below: anchor)
+        footer.append(.init(title: "Ignore") { [weak self] in self?.ignored.insert(issue.ignoreKey) })
+        let lesson = Lessons.lesson(for: issue)
+        // "Spelled \u{201C}test\u{201D}." teaches nothing: show a spelling lesson only when it has a real memory trick.
+        let teaches = lesson.map { !($0.rule.hasPrefix("Spelled ")) } ?? false
+        var card = SuggestionPanel.Card(kind: issue.label, color: issue.color,
+                                        marks: [(issue.original, reps.first.map(shown))],
+                                        message: Self.cardMessage(issue),
+                                        // The specific message beats the general rule; show the rule only when there is no message.
+                                        why: teaches && Self.cardMessage(issue) == nil ? lesson?.rule : nil,
+                                        example: teaches ? lesson?.example : nil,
+                                        count: lesson.map { Mistakes.shared.count($0.id) } ?? 0)
+        if let first = reps.first {
+            card.primary = use(first)
+            card.alts = reps.dropFirst().map { rep in .init(title: shown(rep)) { [weak self] in self?.apply(issue, rep, in: el) } }
+        }
+        card.footer = footer
+        panel.show(card, below: anchor)
     }
 
-    /// The teaching line under the fix: the rule, an example, and how often this one has come up lately.
-    func lessonText(_ issue: Issue) -> String? {
-        guard let l = Lessons.lesson(for: issue) else { return nil }
-        var parts = ["Why: \(l.rule)"]
-        if !l.example.isEmpty { parts.append("Example: \(l.example)") }
-        let n = Mistakes.shared.count(l.id)
-        if n >= 2 { parts.append("You've fixed this one \(n) times in the last 30 days.") }
-        return parts.joined(separator: "\n")
+    /// The engine's message, unless it only repeats the fix already shown ("Did you mean \u{201C}test\u{201D}?").
+    static func cardMessage(_ issue: Issue) -> String? {
+        let m = issue.message.trimmingCharacters(in: .whitespaces)
+        if m.isEmpty || m.hasPrefix("Did you mean") || m.hasPrefix("Change to") || m.hasPrefix("Cut \u{201C}") { return nil }
+        if ["possible typo", "possible agreement error", "possible agreement error.", "agreement error", "compound",
+            "grammatical error", "grammatical problem", "possible grammatical error"].contains(m.lowercased()) { return nil }
+        return m
     }
 
     /// Replaces the text through Accessibility; falls back to select-and-paste for apps that refuse.

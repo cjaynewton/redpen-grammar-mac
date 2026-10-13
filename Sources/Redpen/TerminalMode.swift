@@ -95,18 +95,19 @@ final class TerminalMode {
         if keys == shownKeys && watcher.panel.isVisible { return }
         shownKeys = keys
 
-        let lines = issues.prefix(4).map { "\u{201C}\($0.original)\u{201D} \u{2192} \u{201C}\($0.replacements[0])\u{201D}" }
-        var choices: [SuggestionPanel.Choice] = [.init(title: issues.count == 1 ? "Fix it" : "Fix all \(issues.count)", primary: true) { [weak self] in
-            self?.fix(issues, in: text)
-        }]
-        choices.append(.init(title: "Ignore", primary: false) { [weak self] in
-            for k in keys { self?.watcher.ignored.insert(k) }
-        })
         var seen = Set<String>()
-        let lessons = issues.compactMap { Lessons.lesson(for: $0) }.filter { seen.insert($0.id).inserted }
-        let detail = lessons.isEmpty ? nil : lessons.prefix(2).map { "Why: \($0.rule)" }.joined(separator: "\n")
-        watcher.panel.show(title: "Terminal", color: issues[0].color, message: lines.joined(separator: "\n"),
-                           detail: detail, choices: choices, below: anchor())
+        let lessons = issues.compactMap { Lessons.lesson(for: $0) }
+            .filter { !$0.rule.hasPrefix("Spelled ") && seen.insert($0.id).inserted }
+        var card = SuggestionPanel.Card(kind: "Terminal", color: issues[0].color,
+                                        marks: issues.prefix(4).map { ($0.original, $0.replacements[0]) },
+                                        message: nil, why: lessons.first?.rule, example: lessons.first?.example)
+        card.primary = .init(title: issues.count == 1 ? "Fix it" : "Fix all \(issues.count)") { [weak self] in
+            self?.fix(issues, in: text)
+        }
+        card.footer = [.init(title: "Ignore") { [weak self] in
+            for k in keys { self?.watcher.ignored.insert(k) }
+        }]
+        watcher.panel.show(card, below: anchor())
     }
 
     /// Near the bottom-left of the terminal window, where the prompt usually is.
