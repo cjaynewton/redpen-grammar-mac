@@ -63,7 +63,7 @@ public enum AppleModel {
             let edits = all
             let lead = (s as NSString).range(of: trimmed).location
             for e in edits where await confirmed(trimmed, e) {
-                var e = e; e.range = e.range.shifted(by: base + lead); out.append(e)
+                var e = e; e.range = e.range.shifted(by: base + lead); e.tentative = true; out.append(e)
             }
         }
         return out

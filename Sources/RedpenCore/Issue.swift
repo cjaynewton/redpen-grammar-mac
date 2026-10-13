@@ -12,6 +12,8 @@ public struct Issue: Sendable, Equatable {
     public var message: String
     public var replacements: [String]  // empty means "flag only"
     public var original: String
+    /// From Apple's language model: shown as a softer "maybe" underline, since it can misread good sentences.
+    public var tentative = false
 
     public init(range: NSRange, kind: IssueKind, message: String, replacements: [String], original: String) {
         self.range = range

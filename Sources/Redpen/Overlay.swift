@@ -18,6 +18,11 @@ extension IssueKind {
     }
 }
 
+extension Issue {
+    var color: NSColor { tentative ? NSColor(srgbRed: 0.55, green: 0.55, blue: 0.58, alpha: 0.95) : kind.color }
+    var label: String { tentative ? "Maybe (Apple model)" : kind.label }
+}
+
 struct Mark { let issue: Issue; let rect: CGRect }  // rect in Cocoa screen coordinates
 
 /// A transparent, click-through window laid over the text field that draws the underlines.
@@ -58,6 +63,16 @@ final class UnderlineView: NSView {
             let r = m.rect
             let path = NSBezierPath()
             path.lineWidth = 2
+            if m.issue.tentative {
+                // Softer mark for the model's guesses: a grey dotted line, no wave.
+                path.lineCapStyle = .round
+                path.setLineDash([0.1, 4], count: 2, phase: 0)
+                path.move(to: CGPoint(x: r.minX, y: r.minY + 1))
+                path.line(to: CGPoint(x: r.maxX, y: r.minY + 1))
+                m.issue.color.setStroke()
+                path.stroke()
+                continue
+            }
             // Gentle wave under the text, like Grammarly's underline.
             let y = r.minY + 1
             let step: CGFloat = 2.5

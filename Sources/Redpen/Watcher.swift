@@ -268,7 +268,7 @@ final class Watcher {
             })
         }
         choices.append(.init(title: "Ignore", primary: false) { [weak self] in self?.ignored.insert(issue.ignoreKey) })
-        panel.show(title: issue.kind.label, color: issue.kind.color, message: issue.message, detail: lessonText(issue),
+        panel.show(title: issue.label, color: issue.color, message: issue.message, detail: lessonText(issue),
                    choices: choices, below: anchor)
     }
 

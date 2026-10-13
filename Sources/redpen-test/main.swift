@@ -112,7 +112,7 @@ func run() async {
         let mark = c.expect == nil ? (errorFlags ? "FALSE+" : issues.isEmpty ? "CLEAN" : "RULE") : (hit ? "CAUGHT" : "MISSED")
         print("\(mark.padding(toLength: 7, withPad: " ", startingAt: 0)) \(c.text)")
         for i in issues {
-            print("         [\(i.kind.rawValue)] \"\(i.original)\" -> \(i.replacements.first.map { "\"\($0)\"" } ?? "(flag)")  \(i.message)")
+            print("         [\(i.tentative ? "maybe" : i.kind.rawValue)] \"\(i.original)\" -> \(i.replacements.first.map { "\"\($0)\"" } ?? "(flag)")  \(i.message)")
             if let l = Lessons.lesson(for: i) { print("           lesson \(l.id): \(l.rule)") }
         }
     }

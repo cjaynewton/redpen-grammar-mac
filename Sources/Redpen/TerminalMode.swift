@@ -105,7 +105,7 @@ final class TerminalMode {
         var seen = Set<String>()
         let lessons = issues.compactMap { Lessons.lesson(for: $0) }.filter { seen.insert($0.id).inserted }
         let detail = lessons.isEmpty ? nil : lessons.prefix(2).map { "Why: \($0.rule)" }.joined(separator: "\n")
-        watcher.panel.show(title: "Terminal", color: issues[0].kind.color, message: lines.joined(separator: "\n"),
+        watcher.panel.show(title: "Terminal", color: issues[0].color, message: lines.joined(separator: "\n"),
                            detail: detail, choices: choices, below: anchor())
     }
 
