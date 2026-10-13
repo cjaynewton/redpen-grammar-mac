@@ -11,12 +11,13 @@ final class HotKey {
     init(keyCode: Int = kVK_ANSI_R, modifiers: Int = controlKey | optionKey, action: @escaping () -> Void) {
         HotKey.action = action
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        InstallEventHandler(GetApplicationEventTarget(), { _, _, _ in
+        // The dispatcher target sees hot keys whichever app is in front; the application target can miss them.
+        InstallEventHandler(GetEventDispatcherTarget(), { _, _, _ in
             DispatchQueue.main.async { HotKey.action?() }
             return noErr
         }, 1, &spec, nil, nil)
         let id = EventHotKeyID(signature: OSType(0x5244_504E), id: 1)  // "RDPN"
-        let status = RegisterEventHotKey(UInt32(keyCode), UInt32(modifiers), id, GetApplicationEventTarget(), 0, &ref)
+        let status = RegisterEventHotKey(UInt32(keyCode), UInt32(modifiers), id, GetEventDispatcherTarget(), 0, &ref)
         Log.note(status == noErr ? "shortcut Control-Option-R ready" : "shortcut Control-Option-R failed (\(status)), another app may own it")
     }
 }

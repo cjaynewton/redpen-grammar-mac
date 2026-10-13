@@ -27,7 +27,9 @@ final class Watcher {
     private var inFlight: Set<String> = []
     var ignored: Set<String> = []
     private var marks: [Mark] = []
-    private var lostSince: Date?                 // when the focused field last stopped answering
+    private var lostSince: Date?
+    private var lastContainer: AXUIElement?       // Word's focused page, and the text area found inside it
+    private var lastInner: AXUIElement?                 // when the focused field last stopped answering
     private let walker = MarkerWalker()
     private var lastLoggedCount = -1
     private var enabledPids: Set<pid_t> = []
@@ -55,6 +57,27 @@ final class Watcher {
         marks = []
         lostSince = nil
         overlay.hide()
+    }
+
+    /// The text area inside a container: the focused one if any, else the one holding the most text.
+    private func textInside(_ root: AXUIElement) -> AXUIElement? {
+        var best: (AXUIElement, Int)?
+        var visited = 0
+        func walk(_ e: AXUIElement, _ depth: Int) -> AXUIElement? {
+            guard depth < 10, visited < 600 else { return nil }
+            visited += 1
+            let role: String = AX.attr(e, kAXRoleAttribute) ?? ""
+            if role == "AXTextArea", let v: String = AX.attr(e, kAXValueAttribute) {
+                if let f: Bool = AX.attr(e, kAXFocusedAttribute), f { return e }
+                if v.count > (best?.1 ?? -1) { best = (e, v.count) }
+                return nil
+            }
+            for c in (AX.attr(e, kAXChildrenAttribute) as [AXUIElement]?) ?? [] { if let hit = walk(c, depth + 1) { return hit } }
+            return nil
+        }
+        if let hit = walk(root, 0) { return hit }
+        if best != nil { Log.note("\(bundleID): using the document text inside the focused container") }
+        return best?.0
     }
 
     /// Chrome reports nothing in focus for a moment when a word is clicked. Keep the underlines through a
@@ -90,6 +113,14 @@ final class Watcher {
         var found = AX.element(appEl, kAXFocusedUIElementAttribute)
         if found == nil {  // some apps only answer through the system-wide element
             found = AX.element(AXUIElementCreateSystemWide(), kAXFocusedUIElementAttribute)
+        }
+        // Word sometimes reports the page around the document (a split group or scroll area) as focused,
+        // not the text. Look inside it for the document's text area.
+        if let f = found, config.officeApps.contains(bid),
+           ["AXSplitGroup", "AXScrollArea", "AXGroup", "AXLayoutArea", "AXApplication", "AXWindow"].contains(AX.attr(f, kAXRoleAttribute) ?? ""),
+           let inner = (lastContainer.map { CFEqual($0, f) } == true ? lastInner : nil) ?? textInside(f) {
+            lastContainer = f; lastInner = inner  // walking Word's tree every tick would be slow
+            found = inner
         }
         guard let el = found else { Log.note("\(bid): no focused element (AX error \(err.rawValue))"); lost(app.processIdentifier); return }
         let role: String = AX.attr(el, kAXRoleAttribute) ?? ""
@@ -254,6 +285,7 @@ final class Watcher {
     /// Control-Option-R: open the card for the mistake at or nearest the cursor, without aiming at an underline.
     /// Works even where the app gives no word positions; the card then opens under the text field.
     func openNearest() {
+        Log.note("shortcut pressed in \(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?")")
         if panel.isVisible { panel.hide(); return }
         guard let el = element, !lastText.isEmpty else { Log.note("shortcut: no text field in focus"); NSSound.beep(); return }
         let issues = currentIssues(el, lastText)
