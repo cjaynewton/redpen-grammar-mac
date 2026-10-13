@@ -86,6 +86,15 @@ public enum Lessons {
         "A comma can't join two full sentences. Use a period, or keep the comma and add and, but or so.",
         "The buyer liked the pitch. He asked for a second meeting.")
 
+    static let dangling = make("dangling-modifier", "dangling modifier",
+        "An opening phrase like \u{201C}Walking into the store,\u{201D} describes whoever comes right after the comma. Put the person who did it there.",
+        "Walking into the store, I saw the shelves were empty.")
+    static let subjunctive = make("subjunctive", "if I were / requires that he sign",
+        "For something that isn't true, or something required, use \u{201C}were\u{201D} and the plain verb.",
+        "If I were the buyer\u{2026} / The contract requires that he sign.")
+    static let hyphen = make("compound-modifier", "a two-year contract",
+        "Two words that describe a noun together take a hyphen. After the noun they don't.",
+        "a two-year contract / the contract runs two years")
     static let compound = make("compound-word", "one word or two",
         "One word is the thing (the setup, a login, the backup). Two words is the action (set up the display, log in, back up the file).",
         "Set up the booth before the setup inspection.")
@@ -164,6 +173,9 @@ public enum Lessons {
 
         if msg.contains("two sentences joined by a comma") { return splice }
         if msg.contains("double negative") { return doubleNegative }
+        if msg.hasPrefix("dangling modifier") { return dangling }
+        if msg.contains("isn't true") || msg.contains("plain verb") { return subjunctive }
+        if msg.contains("take a hyphen") || msg.contains("missing hyphen") { return hyphen }
         if (original == "less" && replacement == "fewer") { return fewer }
         if Confusables.compounds.contains(where: { [$0.0, $0.1].contains(original) && [$0.0, $0.1].contains(replacement) }) { return compound }
         if msg.contains("one word") || msg.contains("two words") { return compound }
@@ -225,7 +237,7 @@ public enum Lessons {
 
     /// Fixed lessons by id, for the patterns page. Spelling and confused-pair lessons are rebuilt from the id.
     public static func byID(_ id: String) -> Lesson? {
-        let fixed = pairs.map(\.1) + [pronounCase, agreement, tense, fewer, doubleNegative, splice, compound, dash, colon, container, defensive, language]
+        let fixed = pairs.map(\.1) + [pronounCase, agreement, tense, fewer, doubleNegative, splice, dangling, subjunctive, hyphen, compound, dash, colon, container, defensive, language]
         if let l = fixed.first(where: { $0.id == id }) { return l }
         if id.hasPrefix("spell-") {
             let w = String(id.dropFirst(6))

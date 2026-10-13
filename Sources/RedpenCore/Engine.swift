@@ -21,7 +21,7 @@ public enum Engine {
 
     /// The slow, model-backed layer for one paragraph: confused words, then the rewrite-and-diff check.
     public static func deep(_ text: String) async -> [Issue] {
-        merge(await Confusables.check(text), await AppleModel.check(text))
+        merge(merge(await Confusables.check(text), await Advanced.dangling(text)), await AppleModel.check(text))
     }
 
     /// A word is misspelled only when the Mac dictionary flags it; LanguageTool's suggestions, when it agrees,

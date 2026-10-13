@@ -91,6 +91,17 @@ public enum AppleModel {
         return false
     }
 
+    /// For dangling modifiers: whether the thing named is not a person, group or animal, so it could not have
+    /// done the opening action ("the shelves" cannot be "walking into the store"). A plain question about what
+    /// the thing is: the small model answers that far more reliably than "could X do Y".
+    public static func cannotDo(_ subject: String, _ action: String) async -> Bool {
+        guard isAvailable else { return false }
+        let session = LanguageModelSession(instructions: "Answer with one word, yes or no.")
+        let q = "Is \"\(subject)\" a person, a group of people (such as a team or company), or an animal?"
+        guard let a = try? await session.respond(to: q, options: GenerationOptions(temperature: 0)).content else { return false }
+        return a.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters)).lowercased().hasPrefix("no")
+    }
+
     /// A fragment ("Different brands.") is a style choice, not an error to fix.
     static func hasVerb(_ s: String) -> Bool {
         let tagger = NLTagger(tagSchemes: [.lexicalClass])
