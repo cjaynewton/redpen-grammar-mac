@@ -27,6 +27,7 @@ final class Watcher {
     private var inFlight: Set<String> = []
     var ignored: Set<String> = []
     private var marks: [Mark] = []
+    private var lostSince: Date?                 // when the focused field last stopped answering
     private let walker = MarkerWalker()
     private var lastLoggedCount = -1
     private var enabledPids: Set<pid_t> = []
@@ -52,7 +53,19 @@ final class Watcher {
         lastText = ""
         quickIssues = []
         marks = []
+        lostSince = nil
         overlay.hide()
+    }
+
+    /// Chrome reports nothing in focus for a moment when a word is clicked. Keep the underlines through a
+    /// short blip in the same app, so the click still lands on them; clear only if it lasts.
+    private func lost(_ pid: pid_t) {
+        if element != nil, elementPid == pid {
+            let now = Date()
+            if lostSince == nil { lostSince = now }
+            if now.timeIntervalSince(lostSince!) < 1.5 { return }
+        }
+        clear()
     }
 
     // MARK: - Loop
@@ -78,7 +91,7 @@ final class Watcher {
         if found == nil {  // some apps only answer through the system-wide element
             found = AX.element(AXUIElementCreateSystemWide(), kAXFocusedUIElementAttribute)
         }
-        guard let el = found else { Log.note("\(bid): no focused element (AX error \(err.rawValue))"); clear(); return }
+        guard let el = found else { Log.note("\(bid): no focused element (AX error \(err.rawValue))"); lost(app.processIdentifier); return }
         let role: String = AX.attr(el, kAXRoleAttribute) ?? ""
         let subrole: String = AX.attr(el, kAXSubroleAttribute) ?? ""
         if subrole == (kAXSecureTextFieldSubrole as String) || role == "AXSecureTextField" { clear(); return }
@@ -89,8 +102,9 @@ final class Watcher {
         AXUIElementIsAttributeSettable(el, kAXValueAttribute as CFString, &settable)
         let textRoles = ["AXTextArea", "AXTextField", "AXComboBox", "AXSearchField"]
         guard settable.boolValue || textRoles.contains(role), let text: String = AX.attr(el, kAXValueAttribute) else {
-            Log.note("\(bid): focused \(role)/\(subrole) is not readable text"); clear(); return
+            Log.note("\(bid): focused \(role)/\(subrole) is not readable text"); lost(app.processIdentifier); return
         }
+        lostSince = nil
 
         if element == nil || !CFEqual(element!, el) {
             clear()
@@ -236,6 +250,26 @@ final class Watcher {
     }
 
     // MARK: - Click to fix
+
+    /// Control-Option-R: open the card for the mistake at or nearest the cursor, without aiming at an underline.
+    /// Works even where the app gives no word positions; the card then opens under the text field.
+    func openNearest() {
+        if panel.isVisible { panel.hide(); return }
+        guard let el = element, !lastText.isEmpty else { Log.note("shortcut: no text field in focus"); NSSound.beep(); return }
+        let issues = currentIssues(el, lastText)
+        guard !issues.isEmpty else { Log.note("shortcut: no mistakes in \(bundleID)"); NSSound.beep(); return }
+        let cur = AX.range(el, kAXSelectedTextRangeAttribute)?.location ?? 0
+        func distance(_ i: Issue) -> Int {
+            cur < i.range.location ? i.range.location - cur : cur > NSMaxRange(i.range) ? cur - NSMaxRange(i.range) : 0
+        }
+        let issue = issues.min { distance($0) < distance($1) }!
+        let anchor = marks.first(where: { $0.issue == issue })?.rect
+            ?? lineRects(el, issue.range).first.map(AX.toCocoa)
+            ?? AX.frame(el).map { f in let c = AX.toCocoa(f); return CGRect(x: c.minX + 8, y: c.minY, width: 1, height: 1) }
+        guard let anchor else { Log.note("shortcut: no place to open the card"); NSSound.beep(); return }
+        Log.note("shortcut: opened \u{201C}\(issue.original)\u{201D} in \(bundleID)\(marks.contains { $0.issue == issue } ? "" : " (under the field)")")
+        open(issue, in: el, anchor: anchor)
+    }
 
     private func click(at p: CGPoint) {
         guard !panel.isVisible else { return }

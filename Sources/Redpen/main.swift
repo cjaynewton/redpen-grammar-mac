@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let welcome = WelcomeWindow()
     private let settings = SettingsWindow()
     private var lastDeepText: String?
+    private var hotKey: HotKey?
 
     func applicationDidFinishLaunching(_ n: Notification) {
         watcher = Watcher(config: Config.load())
@@ -30,6 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             welcome.show()
         }
         watcher.start()
+        hotKey = HotKey { [weak self] in self?.watcher.openNearest() }
         // Start at login by default, once; the menu toggle can turn it off and that choice sticks.
         if !UserDefaults.standard.bool(forKey: "loginItemOffered") {
             UserDefaults.standard.set(true, forKey: "loginItemOffered")
@@ -53,6 +55,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let deepItem = item("Deep check with Claude", #selector(deepCheck))
         deepItem.isEnabled = lastDeepText != nil
         menu.addItem(deepItem)
+        let nearest = item("Fix mistake at cursor", #selector(fixNearest))
+        nearest.keyEquivalent = "r"
+        nearest.keyEquivalentModifierMask = [.control, .option]
+        menu.addItem(nearest)
         menu.addItem(item("Your patterns\u{2026}", #selector(showPatterns)))
         menu.addItem(.separator())
         let model = NSMenuItem(title: AppleModel.isAvailable ? "Apple model: on" : "Apple model: off (spelling and rules only)",
@@ -67,6 +73,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(item("Quit Redpen", #selector(quit)))
     }
+
+    @objc private func fixNearest() { watcher.openNearest() }
 
     private func item(_ t: String, _ a: Selector) -> NSMenuItem {
         let i = NSMenuItem(title: t, action: a, keyEquivalent: "")
