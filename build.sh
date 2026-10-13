@@ -45,3 +45,8 @@ rm -rf ~/Applications/Redpen.app
 mkdir -p ~/Applications
 cp -R "$APP" ~/Applications/Redpen.app
 echo "Installed ~/Applications/Redpen.app"
+# A running copy keeps the old code until it restarts, so restart it.
+if pgrep -x Redpen >/dev/null; then
+  pkill -x Redpen; sleep 1; open ~/Applications/Redpen.app
+  echo "Restarted Redpen with the new build"
+fi
