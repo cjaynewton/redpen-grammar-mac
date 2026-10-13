@@ -100,9 +100,14 @@ public enum Spelling {
         }
         for (a, b) in [("our", "or"), ("or", "our"), ("re", "er"), ("er", "re"), ("ce", "se"), ("se", "ce"), ("ize", "ise"),
                        ("ise", "ize"), ("og", "ogue"), ("ogue", "og"), ("check", "cheque"), ("cheque", "check"), ("ll", "l"), ("l", "ll"), ("ae", "e"), ("oe", "e")] { swap(a, b) }
+        // Spelling swaps first (they can move three letters: check -> cheque), then the dictionary's guesses.
+        if let fix = c.first(where: { $0 != lower && ok($0, lang) }) {
+            return w.first?.isUppercase == true ? fix.prefix(1).uppercased() + fix.dropFirst() : fix
+        }
+        c = []
         c += NSSpellChecker.shared.guesses(forWordRange: NSRange(location: 0, length: (lower as NSString).length), in: lower,
                                            language: lang, inSpellDocumentWithTag: 0) ?? []
-        guard let fix = c.first(where: { $0 != lower && !$0.contains(" ") && ok($0, lang) && Lessons.editDistance($0, lower) <= 2 }) else { return nil }
+        guard let fix = c.first(where: { $0 != lower && !$0.contains(" ") && !$0.contains("-") && ok($0, lang) && Lessons.editDistance($0, lower) <= 2 }) else { return nil }
         return w.first?.isUppercase == true ? fix.prefix(1).uppercased() + fix.dropFirst() : fix
     }
 
