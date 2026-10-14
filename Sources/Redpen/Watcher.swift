@@ -11,6 +11,7 @@ final class Watcher {
     lazy var terminal = TerminalMode(watcher: self)
 
     private var timer: Timer?
+    private var watchdog: DispatchSourceTimer?
     private var clickMonitor: Any?
 
     private(set) var element: AXUIElement?
@@ -41,14 +42,47 @@ final class Watcher {
     init(config: Config) { self.config = config }
 
     func start() {
-        timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.tick() }
-        }
+        startLoop()
+        startWatchdog()
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] _ in
             let p = NSEvent.mouseLocation
             MainActor.assumeIsolated { self?.click(at: p) }
         }
         terminal.start()
+    }
+
+    /// The check loop runs in the common run-loop modes, so it keeps going while a menu or a button
+    /// is tracking the mouse instead of waiting for the default mode to come back.
+    private func startLoop() {
+        timer?.invalidate()
+        let t = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tick() }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
+    }
+
+    nonisolated(unsafe) private static var lastTick = Date()
+
+    /// The check loop twice went silent with the app otherwise idle (Oct 14 2026). A background clock notices,
+    /// logs what the main run loop is doing, and restarts the loop.
+    private func startWatchdog() {
+        let s = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "redpen.watchdog"))
+        s.schedule(deadline: .now() + 10, repeating: 10)
+        s.setEventHandler { [weak self] in
+            let stale = Date().timeIntervalSince(Watcher.lastTick)
+            guard stale > 5 else { return }
+            let mode = CFRunLoopCopyCurrentMode(CFRunLoopGetMain()).map { $0.rawValue as String } ?? "none"
+            Log.note("watchdog: no check for \(Int(stale)) s, main run loop mode \(mode)")
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    Log.note("watchdog: main thread answered, restarting the check loop")
+                    self?.startLoop()
+                }
+            }
+        }
+        s.resume()
+        watchdog = s
     }
 
     func clear() {
@@ -97,6 +131,7 @@ final class Watcher {
     // MARK: - Loop
 
     private func tick() {
+        Watcher.lastTick = Date()
         if Date().timeIntervalSince(lastBeat) > 60 {
             lastBeat = Date(); beats += 1
             Log.note("alive \(beats): front \(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?"), field \(element == nil ? "none" : "held"), \(marks.count) underlines, card \(panel.isVisible ? "open" : "closed")")
