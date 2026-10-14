@@ -63,8 +63,8 @@ final class SuggestionPanel: NSObject {
     private static let inset: CGFloat = 18
     private var textWidth: CGFloat { Self.width - Self.inset * 2 }
 
-    /// `anchor` is the underline's rect in Cocoa screen coordinates.
-    func show(_ card: Card, below anchor: CGRect) {
+    /// `anchor` is the underline's rect; `avoid` holds the other underlines, which the card tries not to cover.
+    func show(_ card: Card, below anchor: CGRect, avoid: [CGRect] = []) {
         let p = palette
         actions = []
 
@@ -161,16 +161,16 @@ final class SuggestionPanel: NSObject {
 
         var origin = CGPoint(x: anchor.minX - Self.inset + 2, y: anchor.minY - size.height - 6)
         if let screen = NSScreen.screens.first(where: { $0.frame.contains(anchor.origin) }) ?? NSScreen.main {
-            let vf = screen.visibleFrame
-            if origin.y < vf.minY { origin.y = anchor.maxY + 6 }   // no room below: open above
-            origin.x = min(max(origin.x, vf.minX + 4), vf.maxX - size.width - 4)
+            origin = CardPlacement.origin(anchor: anchor, size: size, visible: screen.visibleFrame, avoid: avoid, inset: Self.inset)
         }
         panel.setFrame(NSRect(origin: origin, size: size), display: true)
         panel.invalidateShadow()
         panel.orderFrontRegardless()
 
         if outsideMonitor == nil {
-            outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .keyDown]) { [weak self] _ in
+            // Left clicks are the watcher's call (a click on the same word keeps the card, on another word
+            // switches it). Typing or a right-click, which opens the app's own menu, closes it.
+            outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.rightMouseDown, .keyDown]) { [weak self] _ in
                 self?.hide()
             }
         }

@@ -27,6 +27,7 @@ final class Watcher {
     private var inFlight: Set<String> = []
     var ignored: Set<String> = []
     private var marks: [Mark] = []
+    private var cardMark: Mark?                   // the underline whose card is open, to close it if the text moves
     private var lostSince: Date?
     private var lastContainer: AXUIElement?       // Word's focused page, and the text area found inside it
     private var lastInner: AXUIElement?                 // when the focused field last stopped answering
@@ -247,7 +248,7 @@ final class Watcher {
 
     private func redraw(_ el: AXUIElement, _ text: String) {
         let issues = currentIssues(el, text)
-        guard !issues.isEmpty else { marks = []; overlay.hide(); return }
+        guard !issues.isEmpty else { marks = []; overlay.hide(); closeCardIfMoved(); return }
         var out: [Mark] = []
         for i in issues.prefix(80) {
             for r in lineRects(el, i.range) { out.append(Mark(issue: i, rect: AX.toCocoa(r))) }
@@ -266,6 +267,18 @@ final class Watcher {
         }
         let frame = AX.frame(el).map { AX.toCocoa($0) } ?? out.reduce(CGRect.null) { $0.union($1.rect) }
         overlay.show(out, over: frame.insetBy(dx: -4, dy: -6))
+        closeCardIfMoved()
+    }
+
+    /// A card left behind when its word scrolls away, or after the word is edited, points at nothing.
+    private func closeCardIfMoved() {
+        guard panel.isVisible, let open = cardMark else { return }
+        let now = marks.first(where: { $0.issue == open.issue })?.rect
+        if now == nil || abs(now!.minX - open.rect.minX) > 3 || abs(now!.minY - open.rect.minY) > 3 {
+            Log.note("card closed: \u{201C}\(open.issue.original)\u{201D} \(now == nil ? "is gone" : "moved")")
+            panel.hide()
+            cardMark = nil
+        }
     }
 
     /// Bounds of a range split by line, so an error that wraps gets an underline on each line.
@@ -300,13 +313,30 @@ final class Watcher {
             ?? AX.frame(el).map { f in let c = AX.toCocoa(f); return CGRect(x: c.minX + 8, y: c.minY, width: 1, height: 1) }
         guard let anchor else { Log.note("shortcut: no place to open the card"); NSSound.beep(); return }
         Log.note("shortcut: opened \u{201C}\(issue.original)\u{201D} in \(bundleID)\(marks.contains { $0.issue == issue } ? "" : " (under the field)")")
+        cardMark = marks.first(where: { $0.issue == issue })
         open(issue, in: el, anchor: anchor)
     }
 
+    /// The click itself still reaches the app, so the caret lands in the word and the app's own selection
+    /// and toolbars behave as usual. Redpen only decides whether its card opens, stays, switches or closes.
     private func click(at p: CGPoint) {
-        guard !panel.isVisible else { return }
-        guard let m = marks.first(where: { $0.rect.insetBy(dx: -1, dy: -4).contains(p) }), let el = element else { return }
-        open(m.issue, in: el, anchor: m.rect)
+        // Hit-test against fresh positions: the underlines are redrawn four times a second, and a click
+        // just after scrolling or typing would otherwise land on where a word used to be.
+        if let el = element, !lastText.isEmpty { redraw(el, lastText) }
+        let hit = marks.first(where: { $0.rect.insetBy(dx: -1, dy: -4).contains(p) })
+        let action = CardPlacement.onClick(cardOpen: panel.isVisible, hit: hit != nil, hitSame: hit != nil && hit?.issue == cardMark?.issue)
+        if element != nil || !marks.isEmpty {
+            let near = marks.prefix(3).map { "\(Int($0.rect.minX)),\(Int($0.rect.minY)) \(Int($0.rect.width))x\(Int($0.rect.height))" }
+            Log.note("click at \(Int(p.x)),\(Int(p.y)) in \(bundleID): \(marks.count) underlines, \(hit == nil ? "none hit" : "hit \u{201C}\(hit!.issue.original)\u{201D}"), field \(element == nil ? "gone" : "held"), card \(action) [\(near.joined(separator: "; "))]")
+        }
+        switch action {
+        case .ignore, .keep: return
+        case .close: panel.hide(); cardMark = nil
+        case .open:
+            guard let m = hit, let el = element else { return }
+            cardMark = m
+            open(m.issue, in: el, anchor: m.rect)
+        }
     }
 
     private func open(_ issue: Issue, in el: AXUIElement, anchor: CGRect) {
@@ -352,7 +382,7 @@ final class Watcher {
             card.alts = reps.dropFirst().map { rep in .init(title: shown(rep)) { [weak self] in self?.apply(issue, rep, in: el) } }
         }
         card.footer = footer
-        panel.show(card, below: anchor)
+        panel.show(card, below: anchor, avoid: marks.filter { $0.issue != issue }.map(\.rect))
     }
 
     /// The engine's message, unless it only repeats the fix already shown ("Did you mean \u{201C}test\u{201D}?").

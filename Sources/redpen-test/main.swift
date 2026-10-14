@@ -143,4 +143,37 @@ func patternsDemo() {
     try? FileManager.default.removeItem(at: url)
 }
 
-if CommandLine.arguments.contains("--patterns") { patternsDemo() } else { await run() }
+/// The fix card's placement and click rules (`--card`). Rects are Cocoa screen coordinates.
+func cardChecks() {
+    var failed = 0
+    func check(_ name: String, _ ok: Bool) { print(ok ? "  pass" : "  FAIL", name); if !ok { failed += 1 } }
+    let screen = CGRect(x: 0, y: 0, width: 1600, height: 1000)
+    let size = CGSize(width: 340, height: 180)
+    let word = CGRect(x: 400, y: 600, width: 40, height: 20)
+    let below = CardPlacement.origin(anchor: word, size: size, visible: screen, avoid: [])
+    check("opens below the word", below.y + size.height <= word.minY)
+    check("lines up with the word", below.x == word.minX - 16)
+    let nearBottom = CGRect(x: 400, y: 60, width: 40, height: 20)
+    check("opens above when there is no room below",
+          CardPlacement.origin(anchor: nearBottom, size: size, visible: screen, avoid: []).y >= nearBottom.maxY)
+    let nextLine = CGRect(x: 420, y: 560, width: 50, height: 20)  // another mistake one line down
+    let p = CardPlacement.origin(anchor: word, size: size, visible: screen, avoid: [word, nextLine])
+    check("opens above rather than cover a mistake below", p.y >= word.maxY)
+    check("never covers its own word", !CGRect(origin: p, size: size).intersects(word))
+    let both = CardPlacement.origin(anchor: word, size: size, visible: screen, avoid: [nextLine, CGRect(x: 420, y: 640, width: 50, height: 20)])
+    check("stays below when both sides cover a mistake", both.y + size.height <= word.minY)
+    let rightEdge = CGRect(x: 1580, y: 600, width: 15, height: 20)
+    check("stays on screen at the right edge",
+          CardPlacement.origin(anchor: rightEdge, size: size, visible: screen, avoid: []).x + size.width <= screen.maxX)
+
+    check("click on an underline opens the card", CardPlacement.onClick(cardOpen: false, hit: true, hitSame: false) == .open)
+    check("click elsewhere does nothing", CardPlacement.onClick(cardOpen: false, hit: false, hitSame: false) == .ignore)
+    check("double-click keeps the card", CardPlacement.onClick(cardOpen: true, hit: true, hitSame: true) == .keep)
+    check("click on another underline switches the card", CardPlacement.onClick(cardOpen: true, hit: true, hitSame: false) == .open)
+    check("click away closes the card", CardPlacement.onClick(cardOpen: true, hit: false, hitSame: false) == .close)
+    print(failed == 0 ? "card checks: all pass" : "card checks: \(failed) failed")
+    if failed > 0 { exit(1) }
+}
+
+if CommandLine.arguments.contains("--card") { cardChecks() }
+else if CommandLine.arguments.contains("--patterns") { patternsDemo() } else { await run() }
