@@ -29,6 +29,8 @@ struct Mark { let issue: Issue; let rect: CGRect }  // rect in Cocoa screen coor
 final class Overlay {
     private let window: NSWindow
     private let view = UnderlineView()
+    private var refreshed = Date.distantPast
+    private var expiry: Timer?
 
     init() {
         window = NSWindow(contentRect: .zero, styleMask: .borderless, backing: .buffered, defer: false)
@@ -47,6 +49,20 @@ final class Overlay {
         view.marks = marks.map { Mark(issue: $0.issue, rect: $0.rect.offsetBy(dx: -frame.minX, dy: -frame.minY)) }
         view.needsDisplay = true
         if !window.isVisible { window.orderFrontRegardless() }
+        refreshed = Date()
+        if expiry == nil {
+            // Underlines are redrawn four times a second. If that stops for any reason, they must not stay
+            // painted over whatever is on screen next. 2 s outlasts the 1.5 s Chrome focus blip.
+            let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, self.window.isVisible, Date().timeIntervalSince(self.refreshed) > 2 else { return }
+                    Log.note("underlines cleared: not refreshed for 2 s")
+                    self.hide()
+                }
+            }
+            RunLoop.main.add(t, forMode: .common)
+            expiry = t
+        }
     }
 
     func hide() {

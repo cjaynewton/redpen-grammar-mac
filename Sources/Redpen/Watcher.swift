@@ -35,6 +35,8 @@ final class Watcher {
     private var lastLoggedCount = -1
     private var enabledPids: Set<pid_t> = []
     private let ownPid = ProcessInfo.processInfo.processIdentifier
+    private var lastBeat = Date.distantPast
+    private var beats = 0
 
     init(config: Config) { self.config = config }
 
@@ -95,6 +97,10 @@ final class Watcher {
     // MARK: - Loop
 
     private func tick() {
+        if Date().timeIntervalSince(lastBeat) > 60 {
+            lastBeat = Date(); beats += 1
+            Log.note("alive \(beats): front \(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?"), field \(element == nil ? "none" : "held"), \(marks.count) underlines, card \(panel.isVisible ? "open" : "closed")")
+        }
         guard config.enabled, AXIsProcessTrusted() else {
             Log.note("waiting: enabled=\(config.enabled) trusted=\(AXIsProcessTrusted())"); clear(); terminal.deactivate(); return
         }
