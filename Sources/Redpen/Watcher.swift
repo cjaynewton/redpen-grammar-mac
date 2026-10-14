@@ -42,6 +42,9 @@ final class Watcher {
     init(config: Config) { self.config = config }
 
     func start() {
+        // An app that is slow to answer Accessibility would otherwise hold every check for up to 6 s (the
+        // system default). Setting it on the system-wide element sets it for every element Redpen asks.
+        AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), 0.5)
         startLoop()
         startWatchdog()
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] _ in
@@ -56,7 +59,12 @@ final class Watcher {
     private func startLoop() {
         timer?.invalidate()
         let t = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.tick() }
+            MainActor.assumeIsolated {
+                let started = Date()
+                self?.tick()
+                let took = Date().timeIntervalSince(started)
+                if took > 0.5, let self { Log.note("slow check: \(Int(took * 1000)) ms in \(self.bundleID)") }
+            }
         }
         RunLoop.main.add(t, forMode: .common)
         timer = t
