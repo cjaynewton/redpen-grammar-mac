@@ -20,6 +20,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
             MenuPanel.render(host: self, to: CommandLine.arguments[i + 1])
             exit(0)
         }
+        if let i = CommandLine.arguments.firstIndex(of: "--render-card"), i + 1 < CommandLine.arguments.count {
+            var card = SuggestionPanel.Card(kind: "Grammar", color: IssueKind.grammar.color, marks: [("was", "were")],
+                                            message: "For something that isn\u{2019}t true, use \u{201C}were\u{201D}: \u{201C}if I were\u{201D}, \u{201C}I wish it were\u{201D}.",
+                                            why: nil, example: "If I were the buyer\u{2026} / The contract requires that he sign.")
+            card.primary = .init(title: "Use \u{201C}were\u{201D}") {}
+            card.footer = [.init(title: "Ignore") {}]
+            for look in ["light", "dark"] { SuggestionPanel.render(card, appearance: look, to: "\(CommandLine.arguments[i + 1])-\(look).png") }
+            exit(0)
+        }
         panel = MenuPanel(host: self)
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         status.button?.image = NSImage(systemSymbolName: "pencil.and.scribble", accessibilityDescription: "Redpen")

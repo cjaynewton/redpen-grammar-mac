@@ -58,6 +58,10 @@ final class SuggestionPanel: NSObject {
     }
 
     static func serif(_ size: CGFloat, italic: Bool = false, weight: NSFont.Weight = .regular) -> NSFont {
+        if let name = Fonts.styleName(bold: weight >= .semibold, medium: weight == .medium, italic: italic),
+           let f = NSFont(name: name, size: size * Fonts.scale) {
+            return f
+        }
         var d = NSFont.systemFont(ofSize: size, weight: weight).fontDescriptor
         d = d.withDesign(.serif) ?? d
         if italic { d = d.withSymbolicTraits(.italic) }
@@ -70,6 +74,41 @@ final class SuggestionPanel: NSObject {
 
     /// `anchor` is the underline's rect; `avoid` holds the other underlines, which the card tries not to cover.
     func show(_ card: Card, below anchor: CGRect, avoid: [CGRect] = []) {
+        let (box, size) = build(card)
+        panel.contentView = box
+
+        var origin = CGPoint(x: anchor.minX - Self.inset + 2, y: anchor.minY - size.height - 6)
+        if let screen = NSScreen.screens.first(where: { $0.frame.contains(anchor.origin) }) ?? NSScreen.main {
+            origin = CardPlacement.origin(anchor: anchor, size: size, visible: screen.visibleFrame, avoid: avoid, inset: Self.inset)
+        }
+        panel.setFrame(NSRect(origin: origin, size: size), display: true)
+        panel.invalidateShadow()
+        panel.orderFrontRegardless()
+
+        if outsideMonitor == nil {
+            // Left clicks are the watcher's call (a click on the same word keeps the card, on another word
+            // switches it). Typing or a right-click, which opens the app's own menu, closes it.
+            outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.rightMouseDown, .keyDown]) { [weak self] _ in
+                self?.hide()
+            }
+        }
+    }
+
+    /// Draws a card into a PNG without showing it, for checking type and layout from the command line.
+    static func render(_ card: Card, appearance: String, to path: String) {
+        let p = SuggestionPanel()
+        p.appearance = appearance
+        let (box, size) = p.build(card)
+        box.frame = NSRect(origin: .zero, size: size)
+        box.appearance = NSAppearance(named: appearance == "dark" ? .darkAqua : .aqua)
+        box.layoutSubtreeIfNeeded()
+        guard let rep = box.bitmapImageRepForCachingDisplay(in: box.bounds) else { return }
+        box.cacheDisplay(in: box.bounds, to: rep)
+        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+    }
+
+    /// The card's view and its size.
+    private func build(_ card: Card) -> (NSView, NSSize) {
         let p = palette
         actions = []
         panel.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
@@ -164,25 +203,8 @@ final class SuggestionPanel: NSObject {
             stack.bottomAnchor.constraint(equalTo: box.bottomAnchor),
             stack.widthAnchor.constraint(equalToConstant: Self.width),
         ])
-        panel.contentView = box
         box.layoutSubtreeIfNeeded()
-        let size = stack.fittingSize
-
-        var origin = CGPoint(x: anchor.minX - Self.inset + 2, y: anchor.minY - size.height - 6)
-        if let screen = NSScreen.screens.first(where: { $0.frame.contains(anchor.origin) }) ?? NSScreen.main {
-            origin = CardPlacement.origin(anchor: anchor, size: size, visible: screen.visibleFrame, avoid: avoid, inset: Self.inset)
-        }
-        panel.setFrame(NSRect(origin: origin, size: size), display: true)
-        panel.invalidateShadow()
-        panel.orderFrontRegardless()
-
-        if outsideMonitor == nil {
-            // Left clicks are the watcher's call (a click on the same word keeps the card, on another word
-            // switches it). Typing or a right-click, which opens the app's own menu, closes it.
-            outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.rightMouseDown, .keyDown]) { [weak self] _ in
-                self?.hide()
-            }
-        }
+        return (box, stack.fittingSize)
     }
 
     private func lines(_ multiple: CGFloat) -> NSParagraphStyle {

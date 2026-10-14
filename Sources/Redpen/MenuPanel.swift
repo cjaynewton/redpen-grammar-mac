@@ -112,6 +112,29 @@ enum Helpers {
 
 // MARK: - View
 
+/// The serif used for writing and corrections. New York, the Mac's own reading serif, unless a trial names
+/// another installed face with REDPEN_SERIF (used for type comparisons, Oct 14 2026).
+enum Fonts {
+    static let serifName: String? = ProcessInfo.processInfo.environment["REDPEN_SERIF"]
+    /// Newsreader's lowercase is shorter than New York's; 10% larger reads at the same size.
+    static let scale: CGFloat = 1.1
+
+    /// The exact installed style, named outright: a family-wide lookup picked italic for upright text.
+    static func styleName(bold: Bool, medium: Bool, italic: Bool) -> String? {
+        guard serifName != nil else { return nil }
+        let w = bold ? "SemiBold" : medium ? "Medium" : ""
+        return "Newsreader16pt-" + (w.isEmpty ? (italic ? "Italic" : "Regular") : w + (italic ? "Italic" : ""))
+    }
+
+    static func serif(_ size: CGFloat, _ weight: Font.Weight = .regular, italic: Bool = false) -> Font {
+        if let name = styleName(bold: weight == .semibold || weight == .bold, medium: weight == .medium, italic: italic) {
+            return .custom(name, fixedSize: size * scale)
+        }
+        let f = Font.system(size: size, weight: weight, design: .serif)
+        return italic ? f.italic() : f
+    }
+}
+
 struct PanelView: View {
     @ObservedObject var model: PanelModel
     var close: () -> Void = {}
@@ -147,7 +170,7 @@ struct PanelView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Redpen").font(.system(size: 21, weight: .semibold, design: .serif).italic())
+                Text("Redpen").font(Fonts.serif(21, .semibold, italic: true))
                 Spacer()
                 Toggle("Checking", isOn: $model.enabled).toggleStyle(.switch).labelsHidden().tint(.green)
             }
@@ -201,7 +224,7 @@ struct PanelView: View {
                 .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         } else {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text("\(model.summary.thisWeek)").font(.system(size: 32, weight: .semibold, design: .serif)).monospacedDigit()
+                Text("\(model.summary.thisWeek)").font(Fonts.serif(32, .semibold)).monospacedDigit()
                 Text("fix\(model.summary.thisWeek == 1 ? "" : "es") this week, \(model.summary.lastWeek) the week before").foregroundStyle(.secondary)
             }
             ForEach(Array((model.showAll ? model.summary.rows : Array(model.summary.rows.prefix(3))).enumerated()), id: \.offset) { _, r in
@@ -225,10 +248,10 @@ struct PanelView: View {
                     } else {
                         Text(r.original).strikethrough(color: tint).foregroundColor(.secondary)
                         + Text("  \u{2192}  ").foregroundColor(.secondary)
-                        + Text(r.replacement.isEmpty ? "(cut)" : r.replacement).italic().foregroundColor(tint)
+                        + Text(r.replacement.isEmpty ? "(cut)" : r.replacement).font(Fonts.serif(17, italic: true)).foregroundColor(tint)
                     }
                 }
-                .font(.system(size: 17, design: .serif))
+                .font(Fonts.serif(17))
                 Text("\(r.thisWeek) time\(r.thisWeek == 1 ? "" : "s") \u{00B7} \(r.trend)").font(.system(size: 13)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
