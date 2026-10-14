@@ -28,7 +28,10 @@ struct HelperRow: Identifiable, Equatable {
 final class PanelModel: ObservableObject {
     weak var host: PanelHost?
     @Published var enabled = true { didSet { guard enabled != oldValue else { return }; host?.config.enabled = enabled; host?.config.save() } }
-    @Published var cardLook = "light" { didSet { guard cardLook != oldValue else { return }; host?.config.cardAppearance = cardLook; host?.config.save() } }
+    @Published var cardLook = "light" {
+        didSet { guard cardLook != oldValue else { return }; host?.config.cardAppearance = cardLook; host?.config.save(); onLookChange?(cardLook) }
+    }
+    var onLookChange: ((String) -> Void)?
     @Published var status = ""
     @Published var live = false
     @Published var trusted = true
@@ -110,6 +113,7 @@ enum Helpers {
 struct PanelView: View {
     @ObservedObject var model: PanelModel
     var close: () -> Void = {}
+    @Environment(\.colorScheme) private var scheme
 
     private static let red = Color(red: 0.85, green: 0.20, blue: 0.19)
     private static let blue = Color(red: 0.16, green: 0.44, blue: 0.86)
@@ -127,6 +131,8 @@ struct PanelView: View {
         .padding(16)
         .frame(width: 400)
         .font(.system(size: 14))
+        // Solid paper, not the system's see-through glass: the page behind made the panel hard to read.
+        .background(scheme == .dark ? Color(red: 0.14, green: 0.145, blue: 0.16) : Color(red: 0.98, green: 0.98, blue: 0.973))
     }
 
     private func group<C: View>(@ViewBuilder _ content: () -> C) -> some View {
@@ -310,6 +316,9 @@ final class MenuPanel: NSObject, NSPopoverDelegate {
         popover.animates = false
         popover.delegate = self
         popover.contentViewController = NSHostingController(rootView: PanelView(model: model) { [weak self] in self?.close() })
+        model.onLookChange = { [weak self] look in
+            self?.popover.appearance = look == "system" ? nil : NSAppearance(named: look == "dark" ? .darkAqua : .aqua)
+        }
     }
 
     var isShown: Bool { popover.isShown }
@@ -319,6 +328,9 @@ final class MenuPanel: NSObject, NSPopoverDelegate {
         let front = NSWorkspace.shared.frontmostApplication
         previous = front?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? previous : front
         model.refresh()
+        // The panel follows the Card setting, so it is light by default like the card.
+        let look = model.host?.config.cardAppearance ?? "light"
+        popover.appearance = look == "system" ? nil : NSAppearance(named: look == "dark" ? .darkAqua : .aqua)
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
@@ -341,7 +353,7 @@ final class MenuPanel: NSObject, NSPopoverDelegate {
         model.set("chatgpt", Helpers.codex())
         for look in ["light", "dark"] {
             // The real popover paints its own background; the test render needs one behind the view.
-            let view = NSHostingView(rootView: PanelView(model: model).background(Color(nsColor: .windowBackgroundColor)))
+            let view = NSHostingView(rootView: PanelView(model: model))
             view.appearance = NSAppearance(named: look == "dark" ? .darkAqua : .aqua)
             let size = view.fittingSize
             let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: .borderless, backing: .buffered, defer: false)
