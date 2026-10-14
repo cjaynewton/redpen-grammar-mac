@@ -32,12 +32,13 @@ final class PanelModel: ObservableObject {
         didSet { guard cardLook != oldValue else { return }; host?.config.cardAppearance = cardLook; host?.config.save(); onLookChange?(cardLook) }
     }
     var onLookChange: ((String) -> Void)?
+    var onLayoutChange: (() -> Void)?
     @Published var status = ""
     @Published var live = false
     @Published var trusted = true
     @Published var canDeepCheck = false
     @Published var summary = PatternSummary([])
-    @Published var showAll = false
+    @Published var showAll = false { didSet { if showAll != oldValue { DispatchQueue.main.async { self.onLayoutChange?() } } } }
     @Published var helpers: [HelperRow] = [
         HelperRow(id: "claude", name: "Claude", letter: "C", tint: Color(red: 0.79, green: 0.39, blue: 0.26), state: .checking),
         HelperRow(id: "chatgpt", name: "ChatGPT", letter: "G", tint: Color(red: 0.06, green: 0.64, blue: 0.50), state: .checking),
@@ -74,6 +75,7 @@ final class PanelModel: ObservableObject {
 
     func set(_ id: String, _ state: HelperRow.State) {
         if let i = helpers.firstIndex(where: { $0.id == id }) { helpers[i].state = state }
+        DispatchQueue.main.async { self.onLayoutChange?() }
     }
 }
 
@@ -299,49 +301,100 @@ struct PanelView: View {
     }
 }
 
-// MARK: - Popover
+// MARK: - Panel window
 
-/// The panel that opens from the pencil in the menu bar. It hands focus back to the app you were typing in
-/// when it closes, so a fix or a deep check acts on that app.
+/// A borderless window that can take clicks and keys, for the menu panel.
+private final class PanelWindow: NSPanel {
+    override var canBecomeKey: Bool { true }
+}
+
+/// The panel that opens from the pencil in the menu bar. Redpen places it itself, hanging from the pencil
+/// and kept inside the screen: the system popover cut its top off on a multi-monitor setup (Oct 14 2026).
+/// It hands focus back to the app you were typing in when it closes, so a fix or a deep check acts there.
 @MainActor
-final class MenuPanel: NSObject, NSPopoverDelegate {
+final class MenuPanel: NSObject, NSWindowDelegate {
     let model = PanelModel()
-    private let popover = NSPopover()
+    private let window: PanelWindow
+    private let hosting: NSHostingView<AnyView>
     private var previous: NSRunningApplication?
+    private weak var button: NSStatusBarButton?
+    private var outsideClicks: Any?
+    private var escapeKey: Any?
 
     init(host: PanelHost) {
+        window = PanelWindow(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: true)
+        hosting = NSHostingView(rootView: AnyView(EmptyView()))
         super.init()
         model.host = host
-        popover.behavior = .transient
-        popover.animates = false
-        popover.delegate = self
-        popover.contentViewController = NSHostingController(rootView: PanelView(model: model) { [weak self] in self?.close() })
-        model.onLookChange = { [weak self] look in
-            self?.popover.appearance = look == "system" ? nil : NSAppearance(named: look == "dark" ? .darkAqua : .aqua)
-        }
+        hosting.rootView = AnyView(PanelView(model: model) { [weak self] in self?.close() })
+        hosting.wantsLayer = true
+        hosting.layer?.cornerRadius = 12
+        hosting.layer?.masksToBounds = true
+        window.contentView = hosting
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = true
+        window.level = .popUpMenu
+        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        model.onLookChange = { [weak self] look in self?.applyLook(look) }
+        model.onLayoutChange = { [weak self] in self?.place() }
     }
 
-    var isShown: Bool { popover.isShown }
+    var isShown: Bool { window.isVisible }
 
     func toggle(from button: NSStatusBarButton) {
-        if popover.isShown { close(); return }
+        if window.isVisible { close(); return }
+        self.button = button
         let front = NSWorkspace.shared.frontmostApplication
         previous = front?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? previous : front
         model.refresh()
-        // The panel follows the Card setting, so it is light by default like the card.
-        let look = model.host?.config.cardAppearance ?? "light"
-        popover.appearance = look == "system" ? nil : NSAppearance(named: look == "dark" ? .darkAqua : .aqua)
+        applyLook(model.host?.config.cardAppearance ?? "light")
+        place()
         NSApp.activate(ignoringOtherApps: true)
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        window.makeKeyAndOrderFront(nil)
+        outsideClicks = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            MainActor.assumeIsolated { self?.close() }
+        }
+        escapeKey = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
+            if e.keyCode == 53 { MainActor.assumeIsolated { self?.close() }; return nil }
+            return e
+        }
     }
 
-    func close() { popover.performClose(nil) }
+    /// Top edge just under the pencil, right edge lined up with it, the whole panel inside the visible screen.
+    private func place() {
+        hosting.layoutSubtreeIfNeeded()
+        let size = hosting.fittingSize
+        guard let button, let bw = button.window else { return }
+        let b = bw.convertToScreen(button.convert(button.bounds, to: nil))
+        let screen = NSScreen.screens.first { $0.frame.intersects(b) } ?? bw.screen ?? NSScreen.main
+        let vf = screen?.visibleFrame ?? b
+        var x = b.midX - size.width / 2
+        x = min(max(x, vf.minX + 6), vf.maxX - size.width - 6)
+        var top = min(b.minY - 6, vf.maxY - 6)
+        if top - size.height < vf.minY + 6 { top = min(vf.maxY - 6, vf.minY + 6 + size.height) }
+        window.setFrame(NSRect(x: x, y: top - size.height, width: size.width, height: size.height), display: true)
+    }
 
-    nonisolated func popoverDidClose(_ notification: Notification) {
-        MainActor.assumeIsolated {
-            model.showAll = false
-            previous?.activate()
-        }
+    private func applyLook(_ look: String) {
+        let a = look == "system" ? nil : NSAppearance(named: look == "dark" ? .darkAqua : .aqua)
+        window.appearance = a
+        hosting.appearance = a
+    }
+
+    func close() {
+        guard window.isVisible else { return }
+        window.orderOut(nil)
+        if let m = outsideClicks { NSEvent.removeMonitor(m); outsideClicks = nil }
+        if let m = escapeKey { NSEvent.removeMonitor(m); escapeKey = nil }
+        model.showAll = false
+        previous?.activate()
+    }
+
+    nonisolated func windowDidResignKey(_ notification: Notification) {
+        MainActor.assumeIsolated { close() }
     }
 
     /// Draws the panel into PNG files without showing it, so its layout can be checked from the command line.
