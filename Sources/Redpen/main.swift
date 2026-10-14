@@ -60,6 +60,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         nearest.keyEquivalentModifierMask = [.control, .option]
         menu.addItem(nearest)
         menu.addItem(item("Your patterns\u{2026}", #selector(showPatterns)))
+        let look = NSMenuItem(title: "Card", action: nil, keyEquivalent: "")
+        let looks = NSMenu()
+        for (title, value) in [("Light", "light"), ("Dark", "dark"), ("Match Mac", "system")] {
+            let i = item(title, #selector(setCardAppearance(_:)))
+            i.representedObject = value
+            i.state = watcher.config.cardAppearance == value ? .on : .off
+            looks.addItem(i)
+        }
+        look.submenu = looks
+        menu.addItem(look)
         menu.addItem(.separator())
         let model = NSMenuItem(title: AppleModel.isAvailable ? "Apple model: on" : "Apple model: off (spelling and rules only)",
                                action: nil, keyEquivalent: "")
@@ -75,6 +85,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func fixNearest() { watcher.openNearest() }
+
+    @objc private func setCardAppearance(_ sender: NSMenuItem) {
+        guard let v = sender.representedObject as? String else { return }
+        watcher.config.cardAppearance = v
+        watcher.config.save()
+    }
 
     private func item(_ t: String, _ a: Selector) -> NSMenuItem {
         let i = NSMenuItem(title: t, action: a, keyEquivalent: "")

@@ -423,6 +423,7 @@ final class Watcher {
             card.alts = reps.dropFirst().map { rep in .init(title: shown(rep)) { [weak self] in self?.apply(issue, rep, in: el) } }
         }
         card.footer = footer
+        panel.appearance = config.cardAppearance
         panel.show(card, below: anchor, avoid: marks.filter { $0.issue != issue }.map(\.rect))
     }
 

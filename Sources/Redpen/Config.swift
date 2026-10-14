@@ -28,6 +28,8 @@ struct Config: Codable {
     var houseStyle = HouseStyle()
     /// Set once the welcome window has been shown.
     var welcomed = false
+    /// The fix card's look: "light", "dark" or "system" (follow the Mac). Light suits the white pages most writing happens on.
+    var cardAppearance = "light"
 
     init() {}
 
@@ -46,6 +48,7 @@ struct Config: Codable {
         deepCheckModel = try c.decodeIfPresent(String.self, forKey: .deepCheckModel) ?? d.deepCheckModel
         houseStyle = try c.decodeIfPresent(HouseStyle.self, forKey: .houseStyle) ?? d.houseStyle
         welcomed = try c.decodeIfPresent(Bool.self, forKey: .welcomed) ?? d.welcomed
+        cardAppearance = try c.decodeIfPresent(String.self, forKey: .cardAppearance) ?? d.cardAppearance
     }
 
     static var url: URL {

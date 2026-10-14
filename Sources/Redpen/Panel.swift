@@ -24,6 +24,11 @@ final class SuggestionPanel: NSObject {
     }
 
     var isVisible: Bool { panel.isVisible }
+    /// "light", "dark" or "system", from the settings.
+    var appearance = "light"
+    private var dark: Bool {
+        appearance == "dark" || (appearance == "system" && NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
+    }
 
     struct Choice { let title: String; let run: () -> Void }
 
@@ -44,10 +49,10 @@ final class SuggestionPanel: NSObject {
     // Paper and ink, light and dark.
     private struct Palette { let paper, ink, mid, line: NSColor }
     private var palette: Palette {
-        let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        // Dark: near-white ink and a light grey for secondary text, so nothing on the card reads dim.
         return dark
-            ? Palette(paper: NSColor(srgbRed: 0.118, green: 0.122, blue: 0.137, alpha: 1), ink: NSColor(srgbRed: 0.945, green: 0.937, blue: 0.918, alpha: 1),
-                      mid: NSColor(srgbRed: 0.71, green: 0.72, blue: 0.75, alpha: 1), line: NSColor(white: 1, alpha: 0.12))
+            ? Palette(paper: NSColor(srgbRed: 0.118, green: 0.122, blue: 0.137, alpha: 1), ink: NSColor(srgbRed: 0.980, green: 0.976, blue: 0.965, alpha: 1),
+                      mid: NSColor(srgbRed: 0.82, green: 0.83, blue: 0.85, alpha: 1), line: NSColor(white: 1, alpha: 0.18))
             : Palette(paper: NSColor(srgbRed: 0.988, green: 0.988, blue: 0.980, alpha: 1), ink: NSColor(srgbRed: 0.106, green: 0.106, blue: 0.122, alpha: 1),
                       mid: NSColor(srgbRed: 0.36, green: 0.38, blue: 0.43, alpha: 1), line: NSColor(white: 0, alpha: 0.12))
     }
@@ -67,6 +72,10 @@ final class SuggestionPanel: NSObject {
     func show(_ card: Card, below anchor: CGRect, avoid: [CGRect] = []) {
         let p = palette
         actions = []
+        panel.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        var card = card
+        // The mark colours are tuned for paper; lift them on the dark card so the fix word stays easy to read.
+        if dark { card.color = card.color.blended(withFraction: 0.35, of: .white) ?? card.color }
 
         let box = NSView()
         box.wantsLayer = true
@@ -110,16 +119,16 @@ final class SuggestionPanel: NSObject {
 
         if let msg = card.message {
             stack.addArrangedSubview(wrapping(NSAttributedString(string: msg, attributes: [
-                .font: Self.serif(15), .foregroundColor: p.ink, .paragraphStyle: lines(1.25)])))
+                .font: Self.serif(16), .foregroundColor: p.ink, .paragraphStyle: lines(1.3)])))
         }
 
         if card.why != nil || card.example?.isEmpty == false || card.count >= 2 {
             let why = NSMutableAttributedString()
             if let w = card.why {
-                why.append(NSAttributedString(string: w, attributes: [.font: Self.serif(14), .foregroundColor: p.mid]))
+                why.append(NSAttributedString(string: w, attributes: [.font: Self.serif(15), .foregroundColor: p.mid]))
             }
             if let ex = card.example, !ex.isEmpty {
-                why.append(NSAttributedString(string: (why.length > 0 ? "\n" : "") + ex, attributes: [.font: Self.serif(14, italic: true), .foregroundColor: p.ink]))
+                why.append(NSAttributedString(string: (why.length > 0 ? "\n" : "") + ex, attributes: [.font: Self.serif(15, italic: true), .foregroundColor: p.ink]))
             }
             if card.count >= 2 {
                 why.append(NSAttributedString(string: (why.length > 0 ? "\n" : "") + "You\u{2019}ve fixed this \(card.count) times in the last 30 days.",
@@ -229,7 +238,7 @@ final class SuggestionPanel: NSObject {
         b.tag = register(c)
         b.isBordered = false
         b.attributedTitle = NSAttributedString(string: c.title, attributes: [
-            .font: NSFont.systemFont(ofSize: 12), .foregroundColor: p.mid,
+            .font: NSFont.systemFont(ofSize: 12.5), .foregroundColor: p.mid,
             .underlineStyle: NSUnderlineStyle.single.rawValue, .underlineColor: p.line])
         return b
     }
