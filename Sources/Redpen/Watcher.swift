@@ -474,6 +474,15 @@ final class Watcher {
         }
     }
 
+    /// One line for the menu panel: which app Redpen is reading and how many mistakes it can see.
+    func statusLine() -> (text: String, live: Bool) {
+        guard AXIsProcessTrusted() else { return ("Waiting for Accessibility permission", false) }
+        guard element != nil, !bundleID.isEmpty else { return ("Click into some text and Redpen starts checking", false) }
+        let name = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first?.localizedName ?? bundleID
+        let n = Set(marks.map { $0.issue.range.location }).count
+        return ("Checking \(name) \u{00B7} " + (n == 0 ? "no mistakes in view" : "\(n) mistake\(n == 1 ? "" : "s") in view"), true)
+    }
+
     /// Text in the focused field for the deep check: the selection if there is one, else the whole field.
     func textForDeepCheck() -> String? {
         guard let el = element else { return nil }

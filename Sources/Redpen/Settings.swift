@@ -78,6 +78,7 @@ struct SettingsView: View {
             }
             Section("Advanced") {
                 Button("Open settings file\u{2026}") { NSWorkspace.shared.open(Config.url) }
+                Button("Reload settings file") { model.config = Config.load() }
             }
         }
         .formStyle(.grouped)

@@ -1,0 +1,357 @@
+import AppKit
+import SwiftUI
+import RedpenCore
+
+/// What the menu-bar panel needs from the rest of the app.
+@MainActor
+protocol PanelHost: AnyObject {
+    var config: Config { get set }
+    func statusLine() -> (text: String, live: Bool)
+    func fixAtCursor()
+    func deepCheck()
+    var canDeepCheck: Bool { get }
+    func openSettings()
+    func allowAccessibility()
+}
+
+/// One AI helper and whether Redpen can use it right now.
+struct HelperRow: Identifiable, Equatable {
+    enum State: Equatable { case checking, connected, notSetUp(String), off }
+    let id: String
+    let name: String
+    let letter: String
+    let tint: Color
+    var state: State
+}
+
+@MainActor
+final class PanelModel: ObservableObject {
+    weak var host: PanelHost?
+    @Published var enabled = true { didSet { guard enabled != oldValue else { return }; host?.config.enabled = enabled; host?.config.save() } }
+    @Published var cardLook = "light" { didSet { guard cardLook != oldValue else { return }; host?.config.cardAppearance = cardLook; host?.config.save() } }
+    @Published var status = ""
+    @Published var live = false
+    @Published var trusted = true
+    @Published var canDeepCheck = false
+    @Published var summary = PatternSummary([])
+    @Published var showAll = false
+    @Published var helpers: [HelperRow] = [
+        HelperRow(id: "claude", name: "Claude", letter: "C", tint: Color(red: 0.79, green: 0.39, blue: 0.26), state: .checking),
+        HelperRow(id: "chatgpt", name: "ChatGPT", letter: "G", tint: Color(red: 0.06, green: 0.64, blue: 0.50), state: .checking),
+        HelperRow(id: "apple", name: "Apple", letter: "A", tint: Color(white: 0.43), state: .checking),
+    ]
+    private var helpersCheckedAt = Date.distantPast
+
+    /// Called each time the panel opens, so everything on it is current.
+    func refresh() {
+        guard let host else { return }
+        trusted = AXIsProcessTrusted()
+        enabled = host.config.enabled
+        cardLook = host.config.cardAppearance
+        let s = host.statusLine()
+        status = s.text; live = s.live
+        canDeepCheck = host.canDeepCheck
+        summary = PatternSummary(Mistakes.shared.all())
+        if Date().timeIntervalSince(helpersCheckedAt) > 300 { checkHelpers(claudePath: host.config.claudePath) }
+    }
+
+    /// Asks Claude Code and Codex whether they are signed in. Both answer from local files, no network call.
+    func checkHelpers(claudePath: String) {
+        helpersCheckedAt = Date()
+        set("apple", AppleModel.isAvailable ? .connected : .off)
+        Task.detached {
+            let claude = Helpers.claude(path: claudePath)
+            let codex = Helpers.codex()
+            await MainActor.run {
+                self.set("claude", claude)
+                self.set("chatgpt", codex)
+            }
+        }
+    }
+
+    func set(_ id: String, _ state: HelperRow.State) {
+        if let i = helpers.firstIndex(where: { $0.id == id }) { helpers[i].state = state }
+    }
+}
+
+enum Helpers {
+    static func claude(path: String) -> HelperRow.State {
+        guard FileManager.default.isExecutableFile(atPath: path) else { return .notSetUp("Install Claude Code to use your Claude plan") }
+        let out = run(path, ["auth", "status", "--json"])
+        return out.contains("\"loggedIn\": true") || out.contains("\"loggedIn\":true") ? .connected : .notSetUp("Sign in to Claude Code")
+    }
+
+    static func codex() -> HelperRow.State {
+        guard let path = ["/opt/homebrew/bin/codex", "/usr/local/bin/codex"].first(where: { FileManager.default.isExecutableFile(atPath: $0) })
+        else { return .notSetUp("Install Codex to use your ChatGPT plan") }
+        return run(path, ["login", "status"]).localizedCaseInsensitiveContains("logged in using chatgpt") ? .connected : .notSetUp("Sign in to Codex with ChatGPT")
+    }
+
+    /// Runs a helper with fixed arguments (never through a shell) and returns what it printed.
+    static func run(_ path: String, _ args: [String]) -> String {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: path)
+        p.arguments = args
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + (env["PATH"] ?? "")
+        p.environment = env
+        let out = Pipe()
+        p.standardOutput = out
+        p.standardError = out
+        do { try p.run() } catch { return "" }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        return String(decoding: data, as: UTF8.self)
+    }
+}
+
+// MARK: - View
+
+struct PanelView: View {
+    @ObservedObject var model: PanelModel
+    var close: () -> Void = {}
+
+    private static let red = Color(red: 0.85, green: 0.20, blue: 0.19)
+    private static let blue = Color(red: 0.16, green: 0.44, blue: 0.86)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            header
+            if !model.trusted { permission }
+            group { actions }
+            group { patterns }
+            group { helpers }
+            group { cardLook }
+            footer
+        }
+        .padding(16)
+        .frame(width: 400)
+        .font(.system(size: 14))
+    }
+
+    private func group<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 16) { content() }
+            .padding(.horizontal, 18).padding(.vertical, 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 4))
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Redpen").font(.system(size: 21, weight: .semibold, design: .serif).italic())
+                Spacer()
+                Toggle("Checking", isOn: $model.enabled).toggleStyle(.switch).labelsHidden().tint(.green)
+            }
+            HStack(spacing: 8) {
+                Circle().fill(model.enabled && model.live ? Color.green : Color.secondary.opacity(0.6)).frame(width: 7, height: 7)
+                Text(model.enabled ? model.status : "Checking is off").foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private var permission: some View {
+        group {
+            Text("Redpen needs Accessibility permission to read what you type.").fixedSize(horizontal: false, vertical: true)
+            Button("Allow Accessibility\u{2026}") { close(); model.host?.allowAccessibility() }
+        }
+    }
+
+    private var actions: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            row("Fix mistake at cursor", key: "\u{2303}\u{2325}R") { close(); model.host?.fixAtCursor() }
+            row("Deep check with Claude", key: nil) { close(); model.host?.deepCheck() }
+                .disabled(!model.canDeepCheck)
+        }
+    }
+
+    private func row(_ title: String, key: String?, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                Text(title)
+                Spacer()
+                if let key { Text(key).foregroundStyle(.tertiary).monospacedDigit() }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func title(_ t: String, _ note: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(t).font(.system(size: 15, weight: .semibold))
+            Spacer()
+            Text(note).font(.system(size: 13)).foregroundStyle(.tertiary)
+        }
+    }
+
+    @ViewBuilder private var patterns: some View {
+        title("Your patterns", "This week")
+        if model.summary.rows.isEmpty {
+            Text("Each fix you accept shows up here, so you can see which mistakes keep coming back.")
+                .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("\(model.summary.thisWeek)").font(.system(size: 32, weight: .semibold, design: .serif)).monospacedDigit()
+                Text("fix\(model.summary.thisWeek == 1 ? "" : "es") this week, \(model.summary.lastWeek) the week before").foregroundStyle(.secondary)
+            }
+            ForEach(Array((model.showAll ? model.summary.rows : Array(model.summary.rows.prefix(3))).enumerated()), id: \.offset) { _, r in
+                patternRow(r)
+            }
+            if model.summary.rows.count > 3 {
+                Button(model.showAll ? "Show fewer" : "See all \(model.summary.rows.count) patterns") { model.showAll.toggle() }
+                    .buttonStyle(.plain).foregroundStyle(Self.blue)
+            }
+        }
+    }
+
+    private func patternRow(_ r: PatternSummary.Row) -> some View {
+        let tint = r.spelling ? Self.red : Self.blue
+        let wordy = r.original.count > 24 || r.replacement.count > 24
+        return HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Group {
+                    if wordy {
+                        Text(r.title.prefix(1).uppercased() + r.title.dropFirst())
+                    } else {
+                        Text(r.original).strikethrough(color: tint).foregroundColor(.secondary)
+                        + Text("  \u{2192}  ").foregroundColor(.secondary)
+                        + Text(r.replacement.isEmpty ? "(cut)" : r.replacement).italic().foregroundColor(tint)
+                    }
+                }
+                .font(.system(size: 17, design: .serif))
+                Text("\(r.thisWeek) time\(r.thisWeek == 1 ? "" : "s") \u{00B7} \(r.trend)").font(.system(size: 13)).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            spark(r.weeks, tint: tint)
+        }
+    }
+
+    private func spark(_ weeks: [Int], tint: Color) -> some View {
+        let top = max(weeks.max() ?? 1, 1)
+        return HStack(alignment: .bottom, spacing: 2) {
+            ForEach(Array(weeks.enumerated()), id: \.offset) { i, n in
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(i == weeks.count - 1 ? tint : Color.secondary.opacity(0.45))
+                    .frame(width: 5, height: max(3, 22 * CGFloat(n) / CGFloat(top)))
+            }
+        }
+        .frame(height: 22, alignment: .bottom)
+        .accessibilityLabel("Last eight weeks: \(weeks.map(String.init).joined(separator: ", "))")
+    }
+
+    @ViewBuilder private var helpers: some View {
+        title("AI helpers", "Who checks and rewrites")
+        ForEach(model.helpers) { h in
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 12) {
+                    Text(h.letter).font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                        .frame(width: 26, height: 26).background(h.tint, in: RoundedRectangle(cornerRadius: 4))
+                    Text(h.name).fontWeight(.semibold)
+                    Spacer()
+                    stateText(h)
+                }
+                if case .notSetUp(let how) = h.state {
+                    Text(how).font(.system(size: 13)).foregroundStyle(.secondary).padding(.leading, 38)
+                }
+            }
+        }
+    }
+
+    private func stateText(_ h: HelperRow) -> some View {
+        switch h.state {
+        case .checking: return Text("Checking\u{2026}").foregroundStyle(.tertiary)
+        case .connected: return Text(h.id == "apple" ? "On this Mac" : "Connected").foregroundStyle(.green)
+        case .notSetUp: return Text("Not set up").foregroundStyle(.orange)
+        case .off: return Text("Off on this Mac").foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder private var cardLook: some View {
+        HStack {
+            Text("Card")
+            Spacer()
+            Picker("Card", selection: $model.cardLook) {
+                Text("Light").tag("light")
+                Text("Dark").tag("dark")
+                Text("Match Mac").tag("system")
+            }
+            .pickerStyle(.segmented).labelsHidden().fixedSize()
+        }
+    }
+
+    private var footer: some View {
+        HStack {
+            Text("Redpen \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")")
+                .font(.system(size: 13)).foregroundStyle(.tertiary)
+            Spacer()
+            Button("Settings\u{2026}") { close(); model.host?.openSettings() }
+            Button("Quit") { NSApp.terminate(nil) }
+        }
+        .padding(.horizontal, 4)
+    }
+}
+
+// MARK: - Popover
+
+/// The panel that opens from the pencil in the menu bar. It hands focus back to the app you were typing in
+/// when it closes, so a fix or a deep check acts on that app.
+@MainActor
+final class MenuPanel: NSObject, NSPopoverDelegate {
+    let model = PanelModel()
+    private let popover = NSPopover()
+    private var previous: NSRunningApplication?
+
+    init(host: PanelHost) {
+        super.init()
+        model.host = host
+        popover.behavior = .transient
+        popover.animates = false
+        popover.delegate = self
+        popover.contentViewController = NSHostingController(rootView: PanelView(model: model) { [weak self] in self?.close() })
+    }
+
+    var isShown: Bool { popover.isShown }
+
+    func toggle(from button: NSStatusBarButton) {
+        if popover.isShown { close(); return }
+        let front = NSWorkspace.shared.frontmostApplication
+        previous = front?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? previous : front
+        model.refresh()
+        NSApp.activate(ignoringOtherApps: true)
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+    }
+
+    func close() { popover.performClose(nil) }
+
+    nonisolated func popoverDidClose(_ notification: Notification) {
+        MainActor.assumeIsolated {
+            model.showAll = false
+            previous?.activate()
+        }
+    }
+
+    /// Draws the panel into PNG files without showing it, so its layout can be checked from the command line.
+    static func render(host: PanelHost, to prefix: String) {
+        let model = PanelModel()
+        model.host = host
+        model.refresh()
+        model.set("claude", Helpers.claude(path: host.config.claudePath))
+        model.set("chatgpt", Helpers.codex())
+        for look in ["light", "dark"] {
+            // The real popover paints its own background; the test render needs one behind the view.
+            let view = NSHostingView(rootView: PanelView(model: model).background(Color(nsColor: .windowBackgroundColor)))
+            view.appearance = NSAppearance(named: look == "dark" ? .darkAqua : .aqua)
+            let size = view.fittingSize
+            let window = NSWindow(contentRect: NSRect(origin: .zero, size: size), styleMask: .borderless, backing: .buffered, defer: false)
+            window.appearance = view.appearance
+            window.backgroundColor = look == "dark" ? NSColor(white: 0.16, alpha: 1) : NSColor(white: 0.97, alpha: 1)
+            window.contentView = view
+            view.layoutSubtreeIfNeeded()
+            guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
+            view.cacheDisplay(in: view.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "\(prefix)-\(look).png"))
+        }
+    }
+}

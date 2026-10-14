@@ -9,6 +9,11 @@ public struct MistakeRecord: Codable, Sendable {
     public let original: String
     public let replacement: String
     public let app: String
+
+    public init(date: Date, lesson: String, title: String, original: String, replacement: String, app: String) {
+        self.date = date; self.lesson = lesson; self.title = title
+        self.original = original; self.replacement = replacement; self.app = app
+    }
 }
 
 public final class Mistakes: @unchecked Sendable {

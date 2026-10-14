@@ -171,6 +171,27 @@ func cardChecks() {
     check("double-click keeps the card", CardPlacement.onClick(cardOpen: true, hit: true, hitSame: true) == .keep)
     check("click on another underline switches the card", CardPlacement.onClick(cardOpen: true, hit: true, hitSame: false) == .open)
     check("click away closes the card", CardPlacement.onClick(cardOpen: true, hit: false, hitSame: false) == .close)
+    // Your patterns summary for the menu panel.
+    let now = Date()
+    func rec(_ daysAgo: Double, _ lesson: String, _ o: String, _ r: String) -> MistakeRecord {
+        MistakeRecord(date: now.addingTimeInterval(-daysAgo * 86_400), lesson: lesson, title: "t", original: o, replacement: r, app: "x")
+    }
+    let recs = [rec(1, "spell-receive", "recieve", "receive"), rec(2, "spell-receive", "recieve", "receive"),
+                rec(9, "spell-receive", "recieve", "receive"), rec(16, "spell-receive", "recieve", "receive"),
+                rec(17, "spell-receive", "recieve", "receive"), rec(23, "spell-receive", "recieve", "receive"),
+                rec(24, "spell-receive", "recieve", "receive"), rec(25, "spell-receive", "recieve", "receive"),
+                rec(3, "its-its", "its", "it's"), rec(100, "old", "a", "b")]
+    let sum = PatternSummary(recs, now: now)
+    check("fixes this week counted", sum.thisWeek == 3)
+    check("fixes the week before counted", sum.lastWeek == 1)
+    check("mistakes older than eight weeks left out", !sum.rows.contains { $0.lesson == "old" })
+    check("most frequent this week comes first", sum.rows.first?.lesson == "spell-receive")
+    check("eight weekly bars, this week last", sum.rows.first?.weeks == [0, 0, 0, 0, 3, 2, 1, 2])
+    check("spelling rows marked as spelling", sum.rows.first?.spelling == true && sum.rows.last?.spelling == false)
+    check("a first-time mistake reads as new", sum.rows.last?.trend == "new this week")
+    check("trend compares with the usual week", sum.rows.first?.trend == "about the same as usual")
+    check("no records gives an empty summary", PatternSummary([]).rows.isEmpty)
+
     print(failed == 0 ? "card checks: all pass" : "card checks: \(failed) failed")
     if failed > 0 { exit(1) }
 }
