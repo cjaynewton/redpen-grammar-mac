@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
            let mode = DeepMode(rawValue: CommandLine.arguments[i + 1]),
            let text = try? String(contentsOfFile: CommandLine.arguments[i + 2], encoding: .utf8) {
             let c = watcher.config
-            print(DeepCheck.call(claude: c.claudePath, model: c.deepCheckModel, prompt: DeepPrompt.build(c.houseStyle, mode: mode), input: text))
+            print(DeepCheck.call(claude: c.claudeExecutable, model: c.deepCheckModel, prompt: DeepPrompt.build(c.houseStyle, mode: mode), input: text))
             exit(0)
         }
         // Debug: download and start the grammar engine, check one sentence, print the result. `--install-engine`

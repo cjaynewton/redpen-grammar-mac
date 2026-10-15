@@ -22,7 +22,7 @@ final class DeepCheck {
     private func ask() {
         guard let text = lastText, let config = lastConfig else { return }
         show(mode == .email ? "Asking Claude to rewrite this as an email\u{2026}" : "Asking Claude\u{2026}")
-        let claude = config.claudePath, model = config.deepCheckModel
+        let claude = config.claudeExecutable, model = config.deepCheckModel
         let prompt = DeepPrompt.build(config.houseStyle, mode: mode)
         Task.detached {
             let result = DeepCheck.call(claude: claude, model: model, prompt: prompt, input: text)

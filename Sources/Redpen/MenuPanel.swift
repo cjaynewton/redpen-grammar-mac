@@ -56,7 +56,7 @@ final class PanelModel: ObservableObject {
         status = s.text; live = s.live
         canDeepCheck = host.canDeepCheck
         summary = PatternSummary(Mistakes.shared.all())
-        if Date().timeIntervalSince(helpersCheckedAt) > 300 { checkHelpers(claudePath: host.config.claudePath) }
+        if Date().timeIntervalSince(helpersCheckedAt) > 300 { checkHelpers(claudePath: host.config.claudeExecutable) }
     }
 
     /// Asks Claude Code and Codex whether they are signed in. Both answer from local files, no network call.
@@ -435,7 +435,7 @@ final class MenuPanel: NSObject, NSWindowDelegate {
         let model = PanelModel()
         model.host = host
         model.refresh()
-        model.set("claude", Helpers.claude(path: host.config.claudePath))
+        model.set("claude", Helpers.claude(path: host.config.claudeExecutable))
         model.set("chatgpt", Helpers.codex())
         for look in ["light", "dark"] {
             // The real popover paints its own background; the test render needs one behind the view.

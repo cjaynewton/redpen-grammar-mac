@@ -23,6 +23,12 @@ struct Config: Codable {
     var officeApps = ["com.microsoft.Word", "com.microsoft.Excel", "com.microsoft.Powerpoint", "com.microsoft.Outlook",
                       "com.microsoft.onenote.mac"]
     var claudePath = "/opt/homebrew/bin/claude"
+    /// The Claude Code to run: the set path if it works, else the places the official installer, Homebrew and npm put it.
+    var claudeExecutable: String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return ([claudePath, home + "/.local/bin/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude", home + "/.claude/local/claude"])
+            .first { FileManager.default.isExecutableFile(atPath: $0) } ?? claudePath
+    }
     var deepCheckModel = "opus"
     /// Optional style rules on top of grammar. All off by default.
     var houseStyle = HouseStyle()
