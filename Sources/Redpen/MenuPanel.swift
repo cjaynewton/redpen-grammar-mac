@@ -112,16 +112,25 @@ enum Helpers {
 
 // MARK: - View
 
-/// The serif used for writing and corrections. New York, the Mac's own reading serif, unless a trial names
-/// another installed face with REDPEN_SERIF (used for type comparisons, Oct 14 2026).
+/// The serif used for writing and corrections: Newsreader, the serif on cedricatkinson.com, shipped inside the
+/// app under its open font licence (Oct 14 2026). REDPEN_SERIF=system goes back to New York, the Mac's own serif,
+/// and so does a missing font file.
 enum Fonts {
-    static let serifName: String? = ProcessInfo.processInfo.environment["REDPEN_SERIF"]
-    /// Newsreader's lowercase is shorter than New York's; 10% larger reads at the same size.
-    static let scale: CGFloat = 1.1
+    /// Loads the fonts bundled in Redpen.app/Contents/Resources/Fonts for this app only. Call once at launch.
+    static func register() {
+        guard let dir = Bundle.main.resourceURL?.appendingPathComponent("Fonts"),
+              let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil) else { return }
+        for f in files where f.pathExtension == "ttf" { CTFontManagerRegisterFontsForURL(f as CFURL, .process, nil) }
+    }
 
-    /// The exact installed style, named outright: a family-wide lookup picked italic for upright text.
+    static let useNewsreader: Bool = ProcessInfo.processInfo.environment["REDPEN_SERIF"] != "system"
+        && NSFont(name: "Newsreader16pt-Regular", size: 12) != nil
+    /// Newsreader's lowercase is shorter than New York's; 10% larger reads at the same size.
+    static var scale: CGFloat { useNewsreader ? 1.1 : 1 }
+
+    /// The exact style, named outright: a family-wide lookup picked italic for upright text.
     static func styleName(bold: Bool, medium: Bool, italic: Bool) -> String? {
-        guard serifName != nil else { return nil }
+        guard useNewsreader else { return nil }
         let w = bold ? "SemiBold" : medium ? "Medium" : ""
         return "Newsreader16pt-" + (w.isEmpty ? (italic ? "Italic" : "Regular") : w + (italic ? "Italic" : ""))
     }

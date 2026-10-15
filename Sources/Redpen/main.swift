@@ -15,6 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
     private var hotKey: HotKey?
 
     func applicationDidFinishLaunching(_ n: Notification) {
+        Fonts.register()
         watcher = Watcher(config: Config.load())
         if let i = CommandLine.arguments.firstIndex(of: "--render-panel"), i + 1 < CommandLine.arguments.count {
             MenuPanel.render(host: self, to: CommandLine.arguments[i + 1])

@@ -22,6 +22,9 @@ APP=build/Redpen.app
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp .build/release/Redpen "$APP/Contents/MacOS/Redpen"
+# Newsreader, the card and panel serif (SIL Open Font License, Resources/Fonts/OFL.txt).
+mkdir -p "$APP/Contents/Resources"
+cp -R Resources/Fonts "$APP/Contents/Resources/Fonts"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
