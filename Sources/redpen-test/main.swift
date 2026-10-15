@@ -196,5 +196,25 @@ func cardChecks() {
     if failed > 0 { exit(1) }
 }
 
+/// The email rules reach Claude's instructions in both Deep check modes (`--email`).
+func emailChecks() {
+    var failed = 0
+    func check(_ name: String, _ ok: Bool) { print(ok ? "  pass" : "  FAIL", name); if !ok { failed += 1 } }
+    let fix = DeepPrompt.build(HouseStyle(), mode: .fixOnly)
+    let email = DeepPrompt.build(HouseStyle.example, mode: .email)
+    check("ten email rules", EmailRules.rules.count == 10)
+    check("every rule in the email prompt", EmailRules.rules.allSatisfy { email.contains($0) })
+    check("fix only still fixes only", fix.contains("Fix grammar and spelling") && !fix.contains("Rewrite the text"))
+    check("fix only keeps email rules out of the edit", fix.contains("Do not apply the email rules to REVISED"))
+    check("fix only gives at most three notes", fix.contains("at most three"))
+    check("email never invents facts", email.contains("Never invent"))
+    check("house style carried into the email rewrite", email.contains("no em dashes"))
+    check("reply format has NOTES", DeepPrompt.format.contains("NOTES"))
+    check("rules have no em dashes", !EmailRules.rules.joined().contains("\u{2014}"))
+    print(failed == 0 ? "email checks: all pass" : "email checks: \(failed) failed")
+    if failed > 0 { exit(1) }
+}
+
 if CommandLine.arguments.contains("--card") { cardChecks() }
+else if CommandLine.arguments.contains("--email") { emailChecks() }
 else if CommandLine.arguments.contains("--patterns") { patternsDemo() } else { await run() }

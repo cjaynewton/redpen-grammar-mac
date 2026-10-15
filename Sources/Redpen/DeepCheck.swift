@@ -8,39 +8,31 @@ final class DeepCheck {
     private var window: NSWindow?
     private var textView: NSTextView?
 
-    /// The writer's house style, turned into plain instructions for Claude.
-    nonisolated static func prompt(_ style: HouseStyle) -> String {
-        var rules: [String] = []
-        if style.noDashes { rules.append("no em dashes; use a period or comma") }
-        if style.colonsOnlyForLabels { rules.append("colons only for labels and lists; a colon joining two thoughts becomes a period") }
-        if !style.containerWords.isEmpty { rules.append("avoid vague words like " + style.containerWords.prefix(6).joined(separator: ", ")) }
-        if !style.disclaimers.isEmpty { rules.append("cut defensive disclaimers") }
-        if style.flagOtherLanguages { rules.append("the result must be in English") }
-        var p = "Edit the text on stdin. Fix grammar and spelling. Keep the writer's meaning and voice; do not add ideas."
-        if !rules.isEmpty { p += " Also apply the writer's house style: " + rules.joined(separator: "; ") + "." }
-        let notes = style.deepCheckNotes.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !notes.isEmpty { p += " Writer's notes: " + notes }
-        return p + "\n" + format
-    }
-
-    nonisolated static let format = """
-    Reply in exactly this form, plain text, no markdown headings:
-    REVISED
-    <the full revised text>
-
-    CHANGES
-    - <one short line per change, most important first>
-    """
+    private var lastText: String?
+    private var lastConfig: Config?
+    private var mode: DeepMode = .fixOnly
+    private var modePicker: NSSegmentedControl?
 
     func run(text: String, config: Config) {
-        show("Asking Claude\u{2026}")
-        let claude = config.claudePath
-        let model = config.deepCheckModel
-        let style = config.houseStyle
+        lastText = text
+        lastConfig = config
+        ask()
+    }
+
+    private func ask() {
+        guard let text = lastText, let config = lastConfig else { return }
+        show(mode == .email ? "Asking Claude to rewrite this as an email\u{2026}" : "Asking Claude\u{2026}")
+        let claude = config.claudePath, model = config.deepCheckModel
+        let prompt = DeepPrompt.build(config.houseStyle, mode: mode)
         Task.detached {
-            let result = DeepCheck.call(claude: claude, model: model, prompt: DeepCheck.prompt(style), input: text)
+            let result = DeepCheck.call(claude: claude, model: model, prompt: prompt, input: text)
             await MainActor.run { self.show(result) }
         }
+    }
+
+    @objc private func modeChanged(_ sender: NSSegmentedControl) {
+        mode = sender.selectedSegment == 1 ? .email : .fixOnly
+        ask()
     }
 
     nonisolated static func call(claude: String, model: String, prompt: String, input: String) -> String {
@@ -70,23 +62,34 @@ final class DeepCheck {
 
     private func show(_ s: String) {
         if window == nil {
-            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 520),
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 560),
                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
             w.title = "Redpen \u{00B7} Deep check"
             w.isReleasedWhenClosed = false
+            let picker = NSSegmentedControl(labels: ["Fix only", "Email"], trackingMode: .selectOne,
+                                            target: self, action: #selector(modeChanged(_:)))
+            picker.selectedSegment = mode == .email ? 1 : 0
+            picker.toolTip = "Email rewrites the text as an email: the ask up top, one ask, easy to answer."
+            let copy = NSButton(title: "Copy revised text", target: self, action: #selector(copyRevised))
+            copy.bezelStyle = .push
+            let bar = NSStackView(views: [picker, NSView(), copy])
+            bar.orientation = .horizontal
+            bar.edgeInsets = NSEdgeInsets(top: 10, left: 16, bottom: 10, right: 16)
             let scroll = NSTextView.scrollableTextView()
             let tv = scroll.documentView as! NSTextView
             tv.isEditable = false
             tv.font = .systemFont(ofSize: 14)
-            tv.textContainerInset = NSSize(width: 16, height: 16)
-            w.contentView = scroll
-            let copy = NSButton(title: "Copy revised text", target: self, action: #selector(copyRevised))
-            copy.bezelStyle = .push
-            w.standardWindowButton(.closeButton)?.superview?.addSubview(copy)
-            copy.frame = NSRect(x: 460, y: 0, width: 150, height: 26)
-            copy.autoresizingMask = [.minXMargin]
+            tv.textContainerInset = NSSize(width: 16, height: 12)
+            let stack = NSStackView(views: [bar, scroll])
+            stack.orientation = .vertical
+            stack.spacing = 0
+            stack.alignment = .leading
+            bar.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+            scroll.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+            w.contentView = stack
             window = w
             textView = tv
+            modePicker = picker
             w.center()
         }
         textView?.string = s

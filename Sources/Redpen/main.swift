@@ -30,6 +30,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
             for look in ["light", "dark"] { SuggestionPanel.render(card, appearance: look, to: "\(CommandLine.arguments[i + 1])-\(look).png") }
             exit(0)
         }
+        // Debug: run a Deep check on a file and print Claude's reply. `--deep email draft.txt`
+        if let i = CommandLine.arguments.firstIndex(of: "--deep"), i + 2 < CommandLine.arguments.count,
+           let mode = DeepMode(rawValue: CommandLine.arguments[i + 1]),
+           let text = try? String(contentsOfFile: CommandLine.arguments[i + 2], encoding: .utf8) {
+            let c = watcher.config
+            print(DeepCheck.call(claude: c.claudePath, model: c.deepCheckModel, prompt: DeepPrompt.build(c.houseStyle, mode: mode), input: text))
+            exit(0)
+        }
         panel = MenuPanel(host: self)
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         status.button?.image = NSImage(systemSymbolName: "pencil.and.scribble", accessibilityDescription: "Redpen")

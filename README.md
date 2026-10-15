@@ -12,7 +12,7 @@ Everything runs on your Mac. Your writing is never sent anywhere unless you choo
 - **Click an underline** to see the fix, a one-line reason and an example. One click applies it.
 - **Your patterns** (in the menu) shows which mistakes keep coming back this week, and whether each is going up or down. The record stays on your Mac and holds only the flagged words and the fix, never your surrounding text.
 - **Terminal:** when you type a sentence (not a command) in Terminal, iTerm, Warp, Ghostty and others, a small bubble offers to fix it.
-- **Deep check with Claude** (optional): sends the paragraph you're in to Claude through [Claude Code](https://claude.com/claude-code) and your Claude subscription, then shows a revised version and a list of changes.
+- **Deep check with Claude** (optional): sends the paragraph you're in to Claude through [Claude Code](https://claude.com/claude-code) and your Claude subscription, then shows a revised version and a list of changes. When the text is an email that asks for something, it adds up to three notes on how to make it easier to answer. Switch the window to **Email** to have Claude rewrite it as one: the ask up top, one ask, easy to say yes to. The ten email rules are in `Sources/RedpenCore/DeepPrompt.swift`, written in Redpen's own words from ideas in Joanna Wiebe's Copyhackers courses and Todd Rogers and Jessica Lasky-Fink's *Writing for Busy Readers*.
 
 Redpen never reads password managers, password fields, or browser windows whose title mentions a bank.
 
