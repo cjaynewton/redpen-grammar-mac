@@ -38,6 +38,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
             print(DeepCheck.call(claude: c.claudePath, model: c.deepCheckModel, prompt: DeepPrompt.build(c.houseStyle, mode: mode), input: text))
             exit(0)
         }
+        // Debug: download and start the grammar engine, check one sentence, print the result. `--install-engine`
+        if CommandLine.arguments.contains("--install-engine") {
+            let e = GrammarEngine.shared
+            e.startIfInstalled()
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                if e.state == .missing { e.install() }
+                var last = -1
+                while true {
+                    switch e.state {
+                    case .running:
+                        let found = await LanguageTool.check("She don't think the price will hold.")
+                        print("running; flagged: " + found.map { ($0.message) }.joined(separator: " | "))
+                        e.stop(); exit(0)
+                    case .failed(let why): print("failed: " + why); exit(1)
+                    case .downloading(let f): let pct = Int(f * 100); if pct / 10 != last { last = pct / 10; print("downloading \(pct)%") }
+                    default: break
+                    }
+                    try? await Task.sleep(for: .seconds(1))
+                }
+            }
+            return
+        }
         panel = MenuPanel(host: self)
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         status.button?.image = NSImage(systemSymbolName: "pencil.and.scribble", accessibilityDescription: "Redpen")
@@ -53,6 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
             welcome.show()
         }
         watcher.start()
+        GrammarEngine.shared.startIfInstalled()
         hotKey = HotKey { [weak self] in self?.watcher.openNearest() }
         // Start at login by default, once; the menu toggle can turn it off and that choice sticks.
         if !UserDefaults.standard.bool(forKey: "loginItemOffered") {
@@ -102,6 +126,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
     }
 
     @objc func quit() { NSApp.terminate(nil) }
+
+    func applicationWillTerminate(_ n: Notification) { GrammarEngine.shared.stop() }
 }
 
 MainActor.assumeIsolated {

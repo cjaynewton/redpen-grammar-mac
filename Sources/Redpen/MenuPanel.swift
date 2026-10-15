@@ -283,6 +283,7 @@ struct PanelView: View {
 
     @ViewBuilder private var helpers: some View {
         title("AI helpers", "Who checks and rewrites")
+        EngineRow(engine: GrammarEngine.shared)
         ForEach(model.helpers) { h in
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 12) {
@@ -449,6 +450,43 @@ final class MenuPanel: NSObject, NSWindowDelegate {
             guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
             view.cacheDisplay(in: view.bounds, to: rep)
             try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "\(prefix)-\(look).png"))
+        }
+    }
+}
+
+/// The full grammar engine's row: on, or a one-click download when it isn't here yet.
+struct EngineRow: View {
+    @ObservedObject var engine: GrammarEngine
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 12) {
+                Text("L").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white)
+                    .frame(width: 26, height: 26).background(Color(red: 0.25, green: 0.38, blue: 0.62), in: RoundedRectangle(cornerRadius: 4))
+                Text("Full grammar").fontWeight(.semibold)
+                Spacer()
+                status
+            }
+            detail.font(.system(size: 13)).foregroundStyle(.secondary).padding(.leading, 38)
+        }
+    }
+
+    @ViewBuilder private var status: some View {
+        switch engine.state {
+        case .checking: Text("Checking\u{2026}").foregroundStyle(.tertiary)
+        case .running: Text("On this Mac").foregroundStyle(.green)
+        case .starting: Text("Starting\u{2026}").foregroundStyle(.secondary)
+        case .downloading(let f): Text("\(Int(f * 100))%").foregroundStyle(.secondary).monospacedDigit()
+        case .missing, .failed: Button("Turn on") { engine.install() }
+        }
+    }
+
+    @ViewBuilder private var detail: some View {
+        switch engine.state {
+        case .missing: Text("Thousands more grammar rules. One download, about 300 MB, then it runs on this Mac.")
+        case .downloading: ProgressView(value: { if case .downloading(let f) = engine.state { return f } else { return 0 } }()).controlSize(.small)
+        case .failed(let why): Text(why)
+        default: EmptyView()
         }
     }
 }

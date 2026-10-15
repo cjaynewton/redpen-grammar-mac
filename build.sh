@@ -40,10 +40,16 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>NSAppleEventsUsageDescription</key><string>Redpen reads the text you type to check it.</string>
 </dict></plist>
 PLIST
-codesign --force --sign "$SIGN_ID" --identifier "$BUNDLE_ID" "$APP"
+if [[ "$SIGN_ID" == Developer\ ID* ]]; then
+  # A download for other Macs: hardened runtime and a secure timestamp, which Apple's notary service requires.
+  codesign --force --options runtime --timestamp --sign "$SIGN_ID" --identifier "$BUNDLE_ID" "$APP"
+else
+  codesign --force --sign "$SIGN_ID" --identifier "$BUNDLE_ID" "$APP"
+fi
 if [[ "$SIGN_ID" == "-" ]]; then
   echo "Note: ad-hoc signed. macOS may ask you to allow Accessibility again after each rebuild."
 fi
+[[ -n "$REDPEN_SKIP_INSTALL" ]] && exit 0
 rm -rf ~/Applications/Redpen.app
 mkdir -p ~/Applications
 cp -R "$APP" ~/Applications/Redpen.app

@@ -48,7 +48,7 @@ cd redpen-mac
 
 `install.sh` installs LanguageTool with Homebrew, starts it (and at every login), builds Redpen into `~/Applications`, and opens it. A welcome window walks you through the one permission macOS needs (**Accessibility**, so Redpen can read what you type).
 
-No Homebrew? Run `./build.sh` instead. Spelling and basic grammar still work without LanguageTool.
+No Homebrew? Run `./build.sh` instead, then click **Turn on** next to **Full grammar** in the Redpen menu. Redpen downloads LanguageTool and a Java runtime (about 300 MB) into `~/Library/Application Support/Redpen/engine` and runs it itself while Redpen is open. Until then, spelling and basic grammar still work.
 
 ### Rebuilding without re-granting permission
 
@@ -97,4 +97,4 @@ Redpen for Mac is an independent project. It is not related to [RedPen](https://
 
 ## License
 
-MIT. See [LICENSE](LICENSE). LanguageTool is a separate program under its own license (LGPL); Redpen talks to it over a local connection and does not include it.
+MIT. See [LICENSE](LICENSE). LanguageTool is a separate program under its own license (LGPL); Redpen talks to it over a local connection and does not include it. The **Turn on** button downloads it unchanged from languagetool.org, with the Eclipse Temurin Java runtime from adoptium.net.
