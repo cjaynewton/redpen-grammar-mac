@@ -6,7 +6,10 @@
 #   REDPEN_BUNDLE_ID="com.example.redpen"
 set -e
 cd "${0:A:h}"
+# A signing identity passed in (release.sh passes the Developer ID) wins over the one in .local.env.
+PASSED_SIGN_ID="$REDPEN_SIGN_ID"
 [[ -f .local.env ]] && source ./.local.env
+[[ -n "$PASSED_SIGN_ID" ]] && REDPEN_SIGN_ID="$PASSED_SIGN_ID"
 BUNDLE_ID="${REDPEN_BUNDLE_ID:-io.github.redpen-mac.Redpen}"
 SIGN_ID="${REDPEN_SIGN_ID:--}"   # "-" is an ad-hoc signature
 
