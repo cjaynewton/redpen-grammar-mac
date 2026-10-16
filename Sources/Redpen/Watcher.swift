@@ -501,25 +501,27 @@ final class Watcher {
         return CFEqual(inner, el)
     }
 
-    /// The text area inside a container only when there is no doubt which one: the single one marked focused, or
-    /// the only one there is. Nil when it would be a guess.
+    /// The text area inside a container only when there is no doubt: the search saw the whole container, exactly
+    /// one control in it says it has focus, and that control is a text area. Nil whenever it would be a guess,
+    /// including when nothing says it has focus.
     private func onlyTextArea(in root: AXUIElement) -> AXUIElement? {
-        var areas: [AXUIElement] = [], focused: [AXUIElement] = []
-        var visited = 0
+        var focused: [AXUIElement] = []
+        var visited = 0, complete = true
         func walk(_ e: AXUIElement, _ depth: Int) {
-            guard depth < 10, visited < 600 else { return }
+            guard complete else { return }
+            guard visited < 600 else { complete = false; return }
             visited += 1
-            if (AX.attr(e, kAXRoleAttribute) ?? "") == "AXTextArea" {
-                areas.append(e)
-                if let f: Bool = AX.attr(e, kAXFocusedAttribute), f { focused.append(e) }
-                return
-            }
-            for c in (AX.attr(e, kAXChildrenAttribute) as [AXUIElement]?) ?? [] { walk(c, depth + 1) }
+            if let f: Bool = AX.attr(e, kAXFocusedAttribute), f { focused.append(e) }
+            var ref: CFTypeRef?
+            let err = AXUIElementCopyAttributeValue(e, kAXChildrenAttribute as CFString, &ref)
+            if err != .success && err != .noValue && err != .attributeUnsupported { complete = false; return }
+            let kids = (ref as? [AXUIElement]) ?? []
+            if !kids.isEmpty && depth >= 12 { complete = false; return }
+            for c in kids { walk(c, depth + 1) }
         }
         walk(root, 0)
-        // A walk cut short by the limits may have missed other areas, so it can't prove there is only one.
-        if focused.count == 1 { return focused[0] }
-        return focused.isEmpty && areas.count == 1 && visited < 600 ? areas[0] : nil
+        guard complete, focused.count == 1, (AX.attr(focused[0], kAXRoleAttribute) ?? "") == "AXTextArea" else { return nil }
+        return focused[0]
     }
 
     /// Replaces the text through Accessibility; falls back to select-and-paste for apps that refuse.
