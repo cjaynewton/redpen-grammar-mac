@@ -266,6 +266,16 @@ func safetyChecks() {
     check("fix all stays inside the paragraph", Engine.fixAll(both, in: NSRange(location: 0, length: 16), of: two)?.text == "The first line.\n")
     check("fix all skips a mistake the writer already changed", Engine.fixAll([iss(para, "teh", "the")], in: NSRange(location: 0, length: 10), of: "We got it.") == nil)
 
+    // Two of the same typo in one sentence are judged separately, each at its own place (Codex re-check).
+    let twice = "I need to wieght the boxes and record their wieght."
+    let first = (twice as NSString).range(of: "wieght")
+    let second = (twice as NSString).range(of: "wieght", options: .backwards)
+    check("same typo twice in a sentence gets two places", Spelling.sentence(around: first, in: twice)?.1 != Spelling.sentence(around: second, in: twice)?.1)
+    let home = "The homestead is near our hom."
+    let typo = (home as NSString).range(of: "hom.")
+    check("the typo's own place is used, not an earlier word that contains it",
+          Spelling.sentence(around: NSRange(location: typo.location, length: 3), in: home)?.1 == typo.location)
+
     print(failed == 0 ? "safety checks: all pass" : "safety checks: \(failed) failed")
     if failed > 0 { exit(1) }
 }

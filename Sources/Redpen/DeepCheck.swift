@@ -39,13 +39,14 @@ final class DeepCheck {
         ask()
     }
 
-    /// Runs Claude Code with no tools, no MCP servers and no skills, so text being checked can only ever be read
-    /// and answered, never acted on. Gives up after `limit` seconds.
+    /// Runs Claude Code with no tools, no MCP servers, no skills and no hooks, so text being checked can only ever
+    /// be read and answered, never acted on or passed along. Gives up after `limit` seconds, whatever stalls.
     nonisolated static func call(claude: String, model: String, prompt: String, input: String, limit: TimeInterval = 180) -> String {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: claude)
         p.arguments = ["-p", prompt, "--model", model, "--output-format", "text",
-                       "--tools", "", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence"]
+                       "--tools", "", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence",
+                       "--settings", #"{"disableAllHooks":true}"#]
         p.currentDirectoryURL = FileManager.default.temporaryDirectory
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + (env["PATH"] ?? "")
@@ -56,23 +57,27 @@ final class DeepCheck {
         p.standardError = errPipe
         let done = DispatchSemaphore(value: 0)
         p.terminationHandler = { _ in done.signal() }
+        // Output arrives in pieces into locked buffers, so whatever came is readable at any moment, and a helper
+        // that keeps a pipe open after Claude exits can't hide a finished reply.
+        let out = Collected(), err = Collected()
+        out.watch(outPipe.fileHandleForReading)
+        err.watch(errPipe.fileHandleForReading)
         do { try p.run() } catch { return "Could not start Claude Code at \(claude).\n\(error.localizedDescription)" }
-        // Read both outputs at the same time, so a full error pipe can never stall the reply.
-        let group = DispatchGroup()
-        var out = Data(), err = Data()
-        DispatchQueue.global().async(group: group) { out = outPipe.fileHandleForReading.readDataToEndOfFile() }
-        DispatchQueue.global().async(group: group) { err = errPipe.fileHandleForReading.readDataToEndOfFile() }
-        inPipe.fileHandleForWriting.write(Data(input.utf8))
-        try? inPipe.fileHandleForWriting.close()
+        // Writing happens off this thread too: a program that stops reading its input can't stall past the limit.
+        let writer = inPipe.fileHandleForWriting
+        DispatchQueue.global().async {
+            try? writer.write(contentsOf: Data(input.utf8))
+            try? writer.close()
+        }
         if done.wait(timeout: .now() + limit) == .timedOut {
             p.terminate()
-            _ = group.wait(timeout: .now() + 5)
             return "Claude didn\u{2019}t answer within \(Int(limit / 60)) minutes. Try again, or check a shorter piece."
         }
-        _ = group.wait(timeout: .now() + 5)
-        let o = String(decoding: out, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        out.waitForEnd(seconds: 5)
+        err.waitForEnd(seconds: 1)
+        let o = String(decoding: out.data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         if p.terminationStatus != 0 || o.isEmpty {
-            return "Claude Code returned an error (exit \(p.terminationStatus)).\n\n" + String(decoding: err, as: UTF8.self)
+            return "Claude Code returned an error (exit \(p.terminationStatus)).\n\n" + String(decoding: err.data, as: UTF8.self)
         }
         return o
     }
@@ -124,4 +129,23 @@ final class DeepCheck {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(revised.trimmingCharacters(in: .whitespacesAndNewlines), forType: .string)
     }
+}
+
+/// Bytes read from a pipe as they arrive, safe to read from any thread.
+private final class Collected: @unchecked Sendable {
+    private let lock = NSLock()
+    private var buffer = Data()
+    private let ended = DispatchSemaphore(value: 0)
+
+    var data: Data { lock.withLock { buffer } }
+
+    func watch(_ h: FileHandle) {
+        h.readabilityHandler = { [weak self] h in
+            let chunk = h.availableData
+            guard let self else { h.readabilityHandler = nil; return }
+            if chunk.isEmpty { h.readabilityHandler = nil; self.ended.signal() } else { self.lock.withLock { self.buffer.append(chunk) } }
+        }
+    }
+
+    func waitForEnd(seconds: Double) { _ = ended.wait(timeout: .now() + seconds) }
 }

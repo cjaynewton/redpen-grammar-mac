@@ -92,11 +92,12 @@ public enum AppleModel {
     }
 
     /// Which of the dictionary's guesses the writer meant, judged from the sentence. Nil when unsure.
-    public static func pickWord(_ sentence: String, typo: String, from options: [String]) async -> String? {
-        guard isAvailable, options.count >= 2 else { return nil }
-        // The typo becomes a blank, so the choice rests on grammar and meaning, not on which option looks most like it.
-        guard let r0 = sentence.range(of: typo) else { return nil }
-        let blank = sentence.replacingCharacters(in: r0, with: "___")
+    public static func pickWord(_ sentence: String, typo: NSRange, from options: [String]) async -> String? {
+        guard isAvailable, options.count >= 2, NSMaxRange(typo) <= (sentence as NSString).length else { return nil }
+        // The typo, at its own place, becomes a blank, so the choice rests on grammar and meaning, not on which
+        // option looks most like it.
+        let blank = ((sentence as NSString).replacingCharacters(in: typo, with: "___") as String)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         let session = LanguageModelSession(instructions: "You complete sentences. Answer with the number of one option only.")
         let list = options.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
         let q = "Which word makes this sentence correct English?\n\(blank)\n\(list)"

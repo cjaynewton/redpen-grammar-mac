@@ -130,7 +130,8 @@ public enum Spelling {
 // MARK: - Sentence-aware suggestions
 
 extension Spelling {
-    /// Model picks, by sentence and misspelled word, so each sentence is asked about once.
+    /// Model picks, by sentence, the typo's place in it, and the typo, so each one is asked about once and two
+    /// typos in one sentence ("wieght the boxes and record their wieght") get their own answers.
     @MainActor static var picks: [String: String] = [:]
 
     /// Puts the word the sentence needs first: "I liked it, thougt it cost" wants "though", "I thougt about it"
@@ -140,11 +141,12 @@ extension Spelling {
     public static func rank(_ issues: [Issue], in text: String) async -> [Issue] {
         var out: [Issue] = []
         for i in issues {
-            guard i.kind == .spelling, let sentence = sentence(around: i.range, in: text) else { out.append(i); continue }
-            let key = sentence + "|" + i.original
+            guard i.kind == .spelling, let (sentence, at) = sentence(around: i.range, in: text) else { out.append(i); continue }
+            let key = "\(sentence)|\(at)|\(i.original)"
             if picks[key] == nil, AppleModel.isAvailable {
                 let pool = candidates(for: i, in: text)
-                if pool.count >= 2 { picks[key] = await AppleModel.pickWord(sentence, typo: i.original, from: pool) ?? "" }
+                let typo = NSRange(location: at, length: i.range.length)
+                if pool.count >= 2 { picks[key] = await AppleModel.pickWord(sentence, typo: typo, from: pool) ?? "" }
                 if picks.count > 2000 { picks.removeAll() }
             }
             out.append(applyPick(i, in: text))
@@ -155,8 +157,8 @@ extension Spelling {
     /// The stored pick for this issue, if any, moved to the front. Never waits on the model.
     @MainActor
     public static func applyPick(_ i: Issue, in text: String) -> Issue {
-        guard i.kind == .spelling, let sentence = sentence(around: i.range, in: text),
-              let pick = picks[sentence + "|" + i.original], !pick.isEmpty else { return i }
+        guard i.kind == .spelling, let (sentence, at) = sentence(around: i.range, in: text),
+              let pick = picks["\(sentence)|\(at)|\(i.original)"], !pick.isEmpty else { return i }
         var out = i
         out.replacements = Array(([pick] + i.replacements.filter { $0 != pick }).prefix(3))
         out.message = "Did you mean \u{201C}\(pick)\u{201D}?"
@@ -174,12 +176,14 @@ extension Spelling {
         }.prefix(6).map { $0 }
     }
 
-    static func sentence(around r: NSRange, in text: String) -> String? {
+    /// The sentence holding `r`, and where `r` starts inside it.
+    public static func sentence(around r: NSRange, in text: String) -> (String, Int)? {
         let ns = text as NSString
         guard NSMaxRange(r) <= ns.length else { return nil }
-        var found: String?
+        var found: (String, Int)?
         text.enumerateSubstrings(in: text.startIndex..., options: .bySentences) { s, sr, _, stop in
-            if NSLocationInRange(r.location, NSRange(sr, in: text)) { found = s?.trimmingCharacters(in: .whitespacesAndNewlines); stop = true }
+            let nr = NSRange(sr, in: text)
+            if let s, NSLocationInRange(r.location, nr), NSMaxRange(r) <= NSMaxRange(nr) { found = (s, r.location - nr.location); stop = true }
         }
         return found
     }

@@ -25,6 +25,7 @@ final class Watcher {
     private var ltKey = ""                        // text slice the LanguageTool result belongs to
     private var ltInFlight = false
     private var ltFailedAt = Date.distantPast        // last time LanguageTool gave no answer
+    private var fixAllRunning = false
     private var modelCache: [String: [Issue]] = [:]  // paragraph text -> issues relative to the paragraph
     private var inFlight: Set<String> = []
     var ignored: Set<String> = []
@@ -467,13 +468,20 @@ final class Watcher {
     /// italics in the paragraph, which replacing the whole paragraph would lose. Apps that need the paste fallback
     /// get a pause between fixes so one paste never runs into the next.
     func fixAll(in range: NSRange, _ el: AXUIElement) {
-        guard let text: String = AX.attr(el, kAXValueAttribute),
+        guard !fixAllRunning, let text: String = AX.attr(el, kAXValueAttribute),
               let result = Engine.fixAll(currentIssues(el, text), in: range, of: text) else { NSSound.beep(); return }
         panel.hide()
+        let app = NSWorkspace.shared.frontmostApplication?.processIdentifier
         Log.note("fix all: \(result.fixed.count) in \(bundleID)")
+        fixAllRunning = true
         Task { @MainActor in
+            defer { self.fixAllRunning = false }
             for i in result.fixed.reversed() {
-                guard let pasted = self.apply(i, i.replacements[0], in: el) else { NSSound.beep(); return }
+                // Stop the moment the writer moves to another field or app: a paste would land there.
+                guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app, let now = self.element, CFEqual(now, el) else {
+                    Log.note("fix all: stopped, focus moved"); return
+                }
+                guard let pasted = self.apply(i, i.replacements[0], in: el) else { return }
                 if pasted { try? await Task.sleep(for: .milliseconds(800)) }
             }
         }
@@ -539,23 +547,34 @@ final class Watcher {
 enum Paste {
     static let marker: Int64 = 0x5245_4450  // "REDP": lets Redpen ignore its own keystrokes
 
+    /// The writer's own clipboard while Redpen borrows it, and the clipboard state Redpen last set.
+    @MainActor private static var saved: [NSPasteboardItem]?
+    @MainActor private static var ours = -1
+
+    @MainActor
     static func replaceSelection(with s: String) {
         let pb = NSPasteboard.general
-        // Keep every item and every type (images, files, formatted text), not only plain text.
-        let saved: [NSPasteboardItem] = (pb.pasteboardItems ?? []).map { item in
-            let copy = NSPasteboardItem()
-            for t in item.types { if let d = item.data(forType: t) { copy.setData(d, forType: t) } }
-            return copy
+        // Snapshot only when the clipboard is the writer's. During back-to-back pastes it still holds Redpen's
+        // previous fix, and the writer's original snapshot is kept instead.
+        if saved == nil || pb.changeCount != ours {
+            // Every item and every type (images, files, formatted text), not only plain text.
+            saved = (pb.pasteboardItems ?? []).map { item in
+                let copy = NSPasteboardItem()
+                for t in item.types { if let d = item.data(forType: t) { copy.setData(d, forType: t) } }
+                return copy
+            }
         }
         pb.clearContents()
         pb.setString(s, forType: .string)
-        let ours = pb.changeCount
+        ours = pb.changeCount
+        let mine = ours
         key(9, flags: .maskCommand)  // V
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            // If the writer copied something new in the meantime, leave it.
-            guard pb.changeCount == ours else { return }
+            // A newer paste will restore later; and if the writer copied something new meanwhile, leave it.
+            guard pb.changeCount == mine, ours == mine, let items = saved else { return }
             pb.clearContents()
-            if !saved.isEmpty { pb.writeObjects(saved) }
+            if !items.isEmpty { pb.writeObjects(items) }
+            saved = nil
         }
     }
 

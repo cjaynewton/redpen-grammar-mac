@@ -33,10 +33,8 @@ public enum LanguageTool {
         var req = URLRequest(url: URL(string: "http://127.0.0.1:8081/v2/languages")!, timeoutInterval: 2)
         req.httpMethod = "GET"
         guard let (data, r) = try? await URLSession.shared.data(for: req), (r as? HTTPURLResponse)?.statusCode == 200
-        else { trust.set(false); return false }
-        let ok = looksLikeLanguageTool(data)
-        trust.set(ok)
-        return ok
+        else { return false }
+        return looksLikeLanguageTool(data)
     }
 
     /// LanguageTool's /v2/languages answer: a list of languages that includes English.
@@ -47,15 +45,6 @@ public enum LanguageTool {
 
     struct Language: Decodable { let longCode: String }
 
-    /// Whether port 8081 was last seen to be LanguageTool, and when it was last asked.
-    final class Trust: @unchecked Sendable {
-        private let lock = NSLock()
-        private var ok = false, askedAt = Date.distantPast
-        func set(_ v: Bool) { lock.withLock { ok = v; askedAt = Date() } }
-        var value: Bool { lock.withLock { ok } }
-        var stale: Bool { lock.withLock { Date().timeIntervalSince(askedAt) > 10 } }
-    }
-    static let trust = Trust()
 
     /// Ranges are relative to `text`. Returns [] if the server is not running.
     public static func check(_ text: String, language: String = "en-CA") async -> [Issue] {
@@ -66,7 +55,8 @@ public enum LanguageTool {
     /// can try the same text again later instead of treating it as clean.
     public static func checkIfReady(_ text: String, language: String = "en-CA") async -> [Issue]? {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
-        if !trust.value || trust.stale { guard await isRunning() else { return nil } }
+        // Ask the port to prove it is LanguageTool before every check: the program behind it can change at any time.
+        guard await isRunning() else { return nil }
         var req = URLRequest(url: url, timeoutInterval: 4)
         req.httpMethod = "POST"
         req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")

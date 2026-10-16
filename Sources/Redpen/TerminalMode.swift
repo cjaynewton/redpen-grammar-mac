@@ -69,26 +69,32 @@ final class TerminalMode {
         default: break
         }
         if flags.contains(.command) {
-            if code == 9, let s = NSPasteboard.general.string(forType: .string), !s.contains("\n") { buffer += s }  // Cmd+V
-            else { reset() }
+            if code == 9, let s = NSPasteboard.general.string(forType: .string), !s.contains("\n") {  // Cmd+V
+                if buffer.isEmpty { owner = focusedElement() }
+                buffer += s
+            } else { reset() }
             return
         }
-        if flags.contains(.control) || flags.contains(.option) && chars.isEmpty { reset(); return }
+        // Control and Option keys can move the cursor (Option-B with Option as Esc, Control-A), so start over.
+        if flags.contains(.control) || flags.contains(.option) { reset(); return }
         if let c = chars.unicodeScalars.first, !CharacterSet.controlCharacters.contains(c) {
             if buffer.isEmpty { owner = focusedElement() }
             buffer += chars
         }
     }
 
+    /// The focused pane, or the focused window for terminals that don't expose panes.
     private func focusedElement() -> AXUIElement? {
         guard let app else { return nil }
-        return AX.element(AXUIElementCreateApplication(app.processIdentifier), kAXFocusedUIElementAttribute)
+        let appEl = AXUIElementCreateApplication(app.processIdentifier)
+        return AX.element(appEl, kAXFocusedUIElementAttribute) ?? AX.element(appEl, kAXFocusedWindowAttribute)
     }
 
-    /// True when the same terminal and the same pane still have focus as when the buffer was typed.
+    /// True only when the same terminal and the same pane still have focus as when the buffer was typed. If Redpen
+    /// can't tell which pane that was, it doesn't fix: a wrong guess deletes someone else's text.
     private func stillSamePane() -> Bool {
-        guard let app, NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier else { return false }
-        guard let owner, let now = focusedElement() else { return owner == nil }
+        guard let app, NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier,
+              let owner, let now = focusedElement() else { return false }
         return CFEqual(owner, now)
     }
 
