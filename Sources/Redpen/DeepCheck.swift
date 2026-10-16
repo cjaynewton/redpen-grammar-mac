@@ -39,9 +39,9 @@ final class DeepCheck {
         ask()
     }
 
-    /// Runs Claude Code with no tools, MCP servers, skills or hooks (except hooks an organisation enforces by managed
-    /// policy, which no command line can switch off), so text being checked can only ever
-    /// be read and answered, never acted on. Gives up after `limit` seconds, whatever stalls.
+    /// Runs Claude Code with its tools, MCP servers, skills and hooks switched off, so Claude itself can only read
+    /// and answer the text. Hooks an organisation enforces by managed policy still run; no command line can switch
+    /// those off. Gives up after `limit` seconds, whatever stalls.
     nonisolated static func call(claude: String, model: String, prompt: String, input: String, limit: TimeInterval = 180) -> String {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: claude)

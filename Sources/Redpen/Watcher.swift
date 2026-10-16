@@ -487,20 +487,18 @@ final class Watcher {
         }
     }
 
-    /// True when `el` has focus right now, asked fresh from the Mac. Word may report the page around the text as
-    /// focused, so a focused element that contains `el` counts too.
+    /// True when `el` has focus right now, asked fresh from the Mac. When Word reports the page around the text as
+    /// focused, the text area inside it is found the same way the watcher finds it, and must be `el` itself.
     func stillFocused(_ el: AXUIElement) -> Bool {
         guard let app = NSWorkspace.shared.frontmostApplication else { return false }
         let live = AX.element(AXUIElementCreateApplication(app.processIdentifier), kAXFocusedUIElementAttribute)
             ?? AX.element(AXUIElementCreateSystemWide(), kAXFocusedUIElementAttribute)
         guard let live else { return false }
-        var e: AXUIElement? = el
-        for _ in 0..<15 {
-            guard let cur = e else { return false }
-            if CFEqual(cur, live) { return true }
-            e = AX.element(cur, kAXParentAttribute)
-        }
-        return false
+        if CFEqual(live, el) { return true }
+        guard config.officeApps.contains(app.bundleIdentifier ?? ""),
+              ["AXSplitGroup", "AXScrollArea", "AXGroup", "AXLayoutArea"].contains(AX.attr(live, kAXRoleAttribute) ?? ""),
+              let inner = textInside(live) else { return false }
+        return CFEqual(inner, el)
     }
 
     /// Replaces the text through Accessibility; falls back to select-and-paste for apps that refuse.
