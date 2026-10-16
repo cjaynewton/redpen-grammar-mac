@@ -477,16 +477,30 @@ final class Watcher {
         Task { @MainActor in
             defer { self.fixAllRunning = false }
             for i in result.fixed.reversed() {
-                // Stop the moment the writer moves to another field or app: a paste would land there. Ask the Mac
-                // for the focused field right now, not Redpen's copy from its last look.
-                guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app,
-                      let now = AX.element(AXUIElementCreateSystemWide(), kAXFocusedUIElementAttribute), CFEqual(now, el) else {
+                // Stop the moment the writer moves to another field or app: a paste would land there.
+                guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app, self.stillFocused(el) else {
                     Log.note("fix all: stopped, focus moved"); return
                 }
                 guard let pasted = self.apply(i, i.replacements[0], in: el) else { return }
                 if pasted { try? await Task.sleep(for: .milliseconds(800)) }
             }
         }
+    }
+
+    /// True when `el` has focus right now, asked fresh from the Mac. Word may report the page around the text as
+    /// focused, so a focused element that contains `el` counts too.
+    func stillFocused(_ el: AXUIElement) -> Bool {
+        guard let app = NSWorkspace.shared.frontmostApplication else { return false }
+        let live = AX.element(AXUIElementCreateApplication(app.processIdentifier), kAXFocusedUIElementAttribute)
+            ?? AX.element(AXUIElementCreateSystemWide(), kAXFocusedUIElementAttribute)
+        guard let live else { return false }
+        var e: AXUIElement? = el
+        for _ in 0..<15 {
+            guard let cur = e else { return false }
+            if CFEqual(cur, live) { return true }
+            e = AX.element(cur, kAXParentAttribute)
+        }
+        return false
     }
 
     /// Replaces the text through Accessibility; falls back to select-and-paste for apps that refuse.
@@ -504,7 +518,9 @@ final class Watcher {
             lastText = ""
             return false
         }
-        // Some apps (Electron, Office) ignore direct writes. Paste over the selection instead.
+        // Some apps (Electron, Office) ignore direct writes. Paste over the selection instead, but only if the
+        // field is still the one in focus: Cmd+V goes wherever the cursor is now.
+        guard stillFocused(el) else { Log.note("fix: not pasted, focus moved"); NSSound.beep(); return nil }
         Paste.replaceSelection(with: replacement)
         lastText = ""
         return true
