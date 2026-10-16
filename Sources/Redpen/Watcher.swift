@@ -24,6 +24,7 @@ final class Watcher {
     private var ltIssues: [Issue] = []            // LanguageTool, absolute ranges
     private var ltKey = ""                        // text slice the LanguageTool result belongs to
     private var ltInFlight = false
+    private var ltFailedAt = Date.distantPast        // last time LanguageTool gave no answer
     private var modelCache: [String: [Issue]] = [:]  // paragraph text -> issues relative to the paragraph
     private var inFlight: Set<String> = []
     var ignored: Set<String> = []
@@ -240,13 +241,14 @@ final class Watcher {
         let pr = ns.paragraphRange(for: window(el, text))
         let slice = ns.substring(with: pr)
         let key = "\(pr.location)|\(slice)"
-        guard key != ltKey, !ltInFlight else { return }
+        guard key != ltKey, !ltInFlight, Date().timeIntervalSince(ltFailedAt) > 3 else { return }
         ltInFlight = true
         Task { @MainActor in
-            let found = await LanguageTool.check(slice).map { var i = $0; i.range = i.range.shifted(by: pr.location); return i }
-            self.ltIssues = found
+            defer { self.ltInFlight = false }
+            // No answer (engine starting, timed out, or not LanguageTool): try this text again in a few seconds.
+            guard let found = await LanguageTool.checkIfReady(slice) else { self.ltFailedAt = Date(); return }
+            self.ltIssues = found.map { var i = $0; i.range = i.range.shifted(by: pr.location); return i }
             self.ltKey = key
-            self.ltInFlight = false
         }
     }
 
@@ -483,14 +485,17 @@ final class Watcher {
         return ("Checking \(name) \u{00B7} " + (n == 0 ? "no mistakes in view" : "\(n) mistake\(n == 1 ? "" : "s") in view"), true)
     }
 
-    /// Text in the focused field for the deep check: the selection if there is one, else the whole field.
+    /// Text in the focused field for the deep check: the selection if there is one, else the paragraph at the cursor.
+    /// Never the rest of the document, which may hold things the writer did not mean to send.
     func textForDeepCheck() -> String? {
         guard let el = element else { return nil }
         if let sel: String = AX.attr(el, kAXSelectedTextAttribute), !sel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return sel
+            return String(sel.prefix(20000))
         }
-        let t: String? = AX.attr(el, kAXValueAttribute)
-        return t.map { String($0.prefix(20000)) }
+        guard let t: String = AX.attr(el, kAXValueAttribute) else { return nil }
+        let cur = AX.range(el, kAXSelectedTextRangeAttribute)?.location ?? 0
+        let para = Engine.paragraph(in: t, at: cur).0
+        return para.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : String(para.prefix(20000))
     }
 }
 
@@ -500,13 +505,21 @@ enum Paste {
 
     static func replaceSelection(with s: String) {
         let pb = NSPasteboard.general
-        let saved = pb.string(forType: .string)
+        // Keep every item and every type (images, files, formatted text), not only plain text.
+        let saved: [NSPasteboardItem] = (pb.pasteboardItems ?? []).map { item in
+            let copy = NSPasteboardItem()
+            for t in item.types { if let d = item.data(forType: t) { copy.setData(d, forType: t) } }
+            return copy
+        }
         pb.clearContents()
         pb.setString(s, forType: .string)
+        let ours = pb.changeCount
         key(9, flags: .maskCommand)  // V
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            // If the writer copied something new in the meantime, leave it.
+            guard pb.changeCount == ours else { return }
             pb.clearContents()
-            if let saved { pb.setString(saved, forType: .string) }
+            if !saved.isEmpty { pb.writeObjects(saved) }
         }
     }
 

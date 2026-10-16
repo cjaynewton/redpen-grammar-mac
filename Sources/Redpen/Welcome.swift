@@ -75,7 +75,7 @@ final class WelcomeWindow: NSObject {
             let up = await LanguageTool.isRunning()
             engineLine.stringValue = up
                 ? "\u{2713} Grammar engine (LanguageTool) is running."
-                : "Grammar engine not found. Spelling and basic grammar still work. For full grammar, run ./install.sh from the Redpen folder, or: brew install languagetool && brew services start languagetool"
+                : "Spelling and basic grammar work now. For thousands more grammar rules, open the Redpen menu and click Turn on next to Full grammar."
         }
     }
 

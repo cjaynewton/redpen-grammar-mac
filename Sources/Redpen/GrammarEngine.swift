@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import RedpenCore
 
@@ -11,12 +12,20 @@ final class GrammarEngine: ObservableObject {
     enum State: Equatable { case checking, running, starting, missing, downloading(Double), failed(String) }
     @Published private(set) var state: State = .checking
 
-    static let languageToolURL = URL(string: "https://languagetool.org/download/LanguageTool-stable.zip")!
-    static var javaURL: URL {
+    /// Exact versions with known SHA-256 fingerprints. A file that doesn't match is thrown away, never unpacked or run.
+    /// Java's fingerprint is the one Adoptium publishes; LanguageTool publishes none, so its fingerprint was taken
+    /// from languagetool.org on 2026-10-16. Moving to a newer version means updating both lines.
+    struct Pinned { let url: URL; let sha256: String }
+    static let languageTool = Pinned(url: URL(string: "https://languagetool.org/download/LanguageTool-6.6.zip")!,
+                                     sha256: "53600506b399bb5ffe1e4c8dec794fd378212f14aaf38ccef9b6f89314d11631")
+    static var java: Pinned {
+        let base = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/"
         #if arch(arm64)
-        URL(string: "https://api.adoptium.net/v3/binary/latest/21/ga/mac/aarch64/jre/hotspot/normal/eclipse")!
+        return Pinned(url: URL(string: base + "OpenJDK21U-jre_aarch64_mac_hotspot_21.0.12.1_1.tar.gz")!,
+                      sha256: "dec50fc6f9fcd4fe3ae8cabf5a5fa68f6afc48841f7698e468e9aa5d54beed84")
         #else
-        URL(string: "https://api.adoptium.net/v3/binary/latest/21/ga/mac/x64/jre/hotspot/normal/eclipse")!
+        return Pinned(url: URL(string: base + "OpenJDK21U-jre_x64_mac_hotspot_21.0.12.1_1.tar.gz")!,
+                      sha256: "6717ec641fd9ce0bb209ca083ee23b42202ac68cb6fcc5753496e0e4a0f41989")
         #endif
     }
 
@@ -41,9 +50,9 @@ final class GrammarEngine: ObservableObject {
                 try? FileManager.default.removeItem(at: dir)
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
                 // Two files, about 50 MB and 250 MB; progress counts both as one bar.
-                let jre = try await GrammarEngine.download(GrammarEngine.javaURL) { f in await GrammarEngine.shared.progress(f * 0.16) }
+                let jre = try await GrammarEngine.download(GrammarEngine.java) { f in await GrammarEngine.shared.progress(f * 0.16) }
                 try GrammarEngine.unpack(jre, into: dir.appendingPathComponent("java"), tar: true)
-                let lt = try await GrammarEngine.download(GrammarEngine.languageToolURL) { f in await GrammarEngine.shared.progress(0.16 + f * 0.84) }
+                let lt = try await GrammarEngine.download(GrammarEngine.languageTool) { f in await GrammarEngine.shared.progress(0.16 + f * 0.84) }
                 try GrammarEngine.unpack(lt, into: dir.appendingPathComponent("languagetool"), tar: false)
                 await MainActor.run { GrammarEngine.shared.launch() }
             } catch {
@@ -113,14 +122,27 @@ final class GrammarEngine: ObservableObject {
         return nil
     }
 
-    nonisolated static func download(_ url: URL, progress: @escaping @Sendable (Double) async -> Void) async throws -> URL {
+    nonisolated static func download(_ pin: Pinned, progress: @escaping @Sendable (Double) async -> Void) async throws -> URL {
         let watch = ProgressWatch { f in Task { await progress(f) } }
-        let (tmp, response) = try await URLSession.shared.download(from: url, delegate: watch)
+        let (tmp, response) = try await URLSession.shared.download(from: pin.url, delegate: watch)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.moveItem(at: tmp, to: file)
+        guard try sha256(of: file) == pin.sha256 else {
+            try? FileManager.default.removeItem(at: file)
+            Log.note("grammar engine download did not match its fingerprint: \(pin.url.lastPathComponent)")
+            throw URLError(.cannotDecodeContentData)
+        }
         await progress(1)
         return file
+    }
+
+    nonisolated static func sha256(of file: URL) throws -> String {
+        let h = try FileHandle(forReadingFrom: file)
+        defer { try? h.close() }
+        var hasher = SHA256()
+        while let chunk = try h.read(upToCount: 1 << 20), !chunk.isEmpty { hasher.update(data: chunk) }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     /// Unpacks with the Mac's own tools, arguments only, never a shell.

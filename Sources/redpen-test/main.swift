@@ -215,6 +215,44 @@ func emailChecks() {
     if failed > 0 { exit(1) }
 }
 
-if CommandLine.arguments.contains("--card") { cardChecks() }
+/// Inputs that used to crash or mislead Redpen (`--safety`), from the Oct 16 2026 Codex review.
+@MainActor
+func safetyChecks() {
+    var failed = 0
+    func check(_ name: String, _ ok: Bool) { print(ok ? "  pass" : "  FAIL", name); if !ok { failed += 1 } }
+
+    var style = HouseStyle()
+    style.disclaimers = ["to be clear,"]
+    let dotted = "\u{130} to be clear, the price holds."
+    let found = Rules.check(dotted, longform: false, style: style).filter { $0.message.hasPrefix("Disclaimer") }
+    check("dotted capital I before a disclaimer: no crash, right words", found.count == 1 && found[0].original == "to be clear,")
+    let mixed = Rules.check("To Be Clear, we ship.", longform: false, style: style).filter { $0.message.hasPrefix("Disclaimer") }
+    check("disclaimer found in any case", mixed.first?.original == "To Be Clear,")
+
+    let stale = Issue(range: NSRange(location: 40, length: 6), kind: .grammar, message: "x", replacements: ["y"], original: "Paris.")
+    check("grammar result from longer old text is dropped, no crash", Engine.protectNames([stale], in: "a").isEmpty)
+    let moved = Issue(range: NSRange(location: 0, length: 3), kind: .grammar, message: "x", replacements: ["y"], original: "dog")
+    check("grammar result whose words changed is dropped", Engine.protectNames([moved], in: "cat sat").isEmpty)
+
+    func reply(_ offset: Int, _ length: Int) -> Data {
+        Data(#"{"matches":[{"message":"m","offset":\#(offset),"length":\#(length),"replacements":[{"value":"v"}],"rule":{"id":"R"}}]}"#.utf8)
+    }
+    check("negative offset from the engine is ignored", LanguageTool.parse(reply(-1, 1), text: "hello") == [])
+    check("huge offset from the engine is ignored", LanguageTool.parse(reply(Int.max, 1), text: "hello") == [])
+    check("range past the end is ignored", LanguageTool.parse(reply(3, 5), text: "hello") == [])
+    check("a good range still comes through", LanguageTool.parse(reply(0, 5), text: "hello")?.first?.original == "hello")
+    check("an answer that isn't LanguageTool's is no answer", LanguageTool.parse(Data("<html>".utf8), text: "hello") == nil)
+
+    check("port 8081 answering with a web page is not LanguageTool", !LanguageTool.looksLikeLanguageTool(Data("<html>ok</html>".utf8)))
+    check("port 8081 answering with an empty list is not LanguageTool", !LanguageTool.looksLikeLanguageTool(Data("[]".utf8)))
+    check("LanguageTool's own language list is accepted",
+          LanguageTool.looksLikeLanguageTool(Data(#"[{"name":"English (Canada)","code":"en","longCode":"en-CA"}]"#.utf8)))
+
+    print(failed == 0 ? "safety checks: all pass" : "safety checks: \(failed) failed")
+    if failed > 0 { exit(1) }
+}
+
+if CommandLine.arguments.contains("--safety") { safetyChecks() }
+else if CommandLine.arguments.contains("--card") { cardChecks() }
 else if CommandLine.arguments.contains("--email") { emailChecks() }
 else if CommandLine.arguments.contains("--patterns") { patternsDemo() } else { await run() }

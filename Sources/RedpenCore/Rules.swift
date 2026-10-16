@@ -40,14 +40,14 @@ public enum Rules {
                              replacements: [". " + first], original: ns.substring(with: span)))
         }
 
-        let lower = text.lowercased() as NSString
-        for phrase in style.disclaimers.map({ $0.lowercased() }) where !phrase.isEmpty {
-            var r = lower.range(of: phrase)
+        // Search the original text, ignoring case, so ranges stay right when lowercasing changes a string's length.
+        for phrase in style.disclaimers where !phrase.isEmpty {
+            var r = ns.range(of: phrase, options: .caseInsensitive)
             while r.location != NSNotFound {
                 out.append(Issue(range: r, kind: .voice, message: "Disclaimer. Cut it and let the evidence speak.",
                                  replacements: [""], original: ns.substring(with: r)))
                 let next = r.location + r.length
-                r = lower.range(of: phrase, range: NSRange(location: next, length: lower.length - next))
+                r = ns.range(of: phrase, options: .caseInsensitive, range: NSRange(location: next, length: ns.length - next))
             }
         }
 

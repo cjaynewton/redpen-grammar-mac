@@ -87,6 +87,8 @@ extension Engine {
     public static func protectNames(_ issues: [Issue], in text: String) -> [Issue] {
         let ns = text as NSString
         return issues.filter { i in
+            // A range from an older version of the text can run past its end; drop it rather than crash.
+            guard NSMaxRange(i.range) <= ns.length, ns.substring(with: i.range) == i.original else { return false }
             guard i.kind == .grammar else { return true }
             if let r = i.message.range(of: "subject \u{2018}[A-Z][^\u{2019}]*\u{2019}", options: .regularExpression), !r.isEmpty {
                 return false

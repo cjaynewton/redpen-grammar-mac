@@ -12,6 +12,7 @@ final class DeepCheck {
     private var lastConfig: Config?
     private var mode: DeepMode = .fixOnly
     private var modePicker: NSSegmentedControl?
+    private var request = 0
 
     func run(text: String, config: Config) {
         lastText = text
@@ -24,9 +25,12 @@ final class DeepCheck {
         show(mode == .email ? "Asking Claude to rewrite this as an email\u{2026}" : "Asking Claude\u{2026}")
         let claude = config.claudeExecutable, model = config.deepCheckModel
         let prompt = DeepPrompt.build(config.houseStyle, mode: mode)
+        // Only the newest request may fill the window; an older one finishing late is dropped.
+        request += 1
+        let id = request
         Task.detached {
             let result = DeepCheck.call(claude: claude, model: model, prompt: prompt, input: text)
-            await MainActor.run { self.show(result) }
+            await MainActor.run { if id == self.request { self.show(result) } }
         }
     }
 
@@ -35,10 +39,13 @@ final class DeepCheck {
         ask()
     }
 
-    nonisolated static func call(claude: String, model: String, prompt: String, input: String) -> String {
+    /// Runs Claude Code with no tools, no MCP servers and no skills, so text being checked can only ever be read
+    /// and answered, never acted on. Gives up after `limit` seconds.
+    nonisolated static func call(claude: String, model: String, prompt: String, input: String, limit: TimeInterval = 180) -> String {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: claude)
-        p.arguments = ["-p", prompt, "--model", model, "--output-format", "text"]
+        p.arguments = ["-p", prompt, "--model", model, "--output-format", "text",
+                       "--tools", "", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence"]
         p.currentDirectoryURL = FileManager.default.temporaryDirectory
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + (env["PATH"] ?? "")
@@ -47,12 +54,22 @@ final class DeepCheck {
         p.standardInput = inPipe
         p.standardOutput = outPipe
         p.standardError = errPipe
+        let done = DispatchSemaphore(value: 0)
+        p.terminationHandler = { _ in done.signal() }
         do { try p.run() } catch { return "Could not start Claude Code at \(claude).\n\(error.localizedDescription)" }
+        // Read both outputs at the same time, so a full error pipe can never stall the reply.
+        let group = DispatchGroup()
+        var out = Data(), err = Data()
+        DispatchQueue.global().async(group: group) { out = outPipe.fileHandleForReading.readDataToEndOfFile() }
+        DispatchQueue.global().async(group: group) { err = errPipe.fileHandleForReading.readDataToEndOfFile() }
         inPipe.fileHandleForWriting.write(Data(input.utf8))
         try? inPipe.fileHandleForWriting.close()
-        let out = outPipe.fileHandleForReading.readDataToEndOfFile()
-        let err = errPipe.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
+        if done.wait(timeout: .now() + limit) == .timedOut {
+            p.terminate()
+            _ = group.wait(timeout: .now() + 5)
+            return "Claude didn\u{2019}t answer within \(Int(limit / 60)) minutes. Try again, or check a shorter piece."
+        }
+        _ = group.wait(timeout: .now() + 5)
         let o = String(decoding: out, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         if p.terminationStatus != 0 || o.isEmpty {
             return "Claude Code returned an error (exit \(p.terminationStatus)).\n\n" + String(decoding: err, as: UTF8.self)

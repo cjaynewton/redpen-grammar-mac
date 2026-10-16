@@ -42,7 +42,7 @@ struct SettingsView: View {
                 LabeledContent("Grammar engine") {
                     switch model.engineRunning {
                     case .some(true): Text("LanguageTool running").foregroundStyle(.green)
-                    case .some(false): Text("Not running. Run ./install.sh").foregroundStyle(.orange)
+                    case .some(false): Text("Not on yet. Turn it on from the Redpen menu: Full grammar.").foregroundStyle(.orange)
                     case .none: Text("Checking\u{2026}").foregroundStyle(.secondary)
                     }
                 }

@@ -13,6 +13,8 @@ final class TerminalMode {
     private var lastKey = Date.distantPast
     private var checkedBuffer = ""
     private var shownKeys: [String] = []
+    private var owner: AXUIElement?  // the pane the buffer was typed into
+    private var mouseMonitor: Any?
 
     init(watcher: Watcher) { self.watcher = watcher }
 
@@ -23,6 +25,10 @@ final class TerminalMode {
             let code = e.keyCode
             let flags = e.modifierFlags.intersection(.deviceIndependentFlagsMask)
             MainActor.assumeIsolated { if !mine { self?.key(code: code, chars: chars, flags: flags) } }
+        }
+        // A click can move the cursor or switch panes, and Redpen can't see where it lands, so start over.
+        mouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            MainActor.assumeIsolated { if self?.active == true { self?.reset() } }
         }
         Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
@@ -45,6 +51,7 @@ final class TerminalMode {
         buffer = ""
         checkedBuffer = ""
         shownKeys = []
+        owner = nil
         watcher.panel.hide()
     }
 
@@ -53,7 +60,10 @@ final class TerminalMode {
         lastKey = Date()
         switch code {
         case 36, 76: reset(); return                     // Return: line sent
-        case 51: if !buffer.isEmpty { buffer.removeLast() }; return  // Delete
+        case 51:  // Delete. With Option, Command or Control it removes a word or the line; Redpen can't know how much.
+            if !flags.intersection([.option, .command, .control]).isEmpty { reset(); return }
+            if !buffer.isEmpty { buffer.removeLast() }
+            return
         case 53, 48, 115, 116, 117, 119, 121, 123, 124, 125, 126:  // Esc, Tab, Home, PgUp, Fwd-Del, End, PgDn, arrows
             reset(); return
         default: break
@@ -64,7 +74,22 @@ final class TerminalMode {
             return
         }
         if flags.contains(.control) || flags.contains(.option) && chars.isEmpty { reset(); return }
-        if let c = chars.unicodeScalars.first, !CharacterSet.controlCharacters.contains(c) { buffer += chars }
+        if let c = chars.unicodeScalars.first, !CharacterSet.controlCharacters.contains(c) {
+            if buffer.isEmpty { owner = focusedElement() }
+            buffer += chars
+        }
+    }
+
+    private func focusedElement() -> AXUIElement? {
+        guard let app else { return nil }
+        return AX.element(AXUIElementCreateApplication(app.processIdentifier), kAXFocusedUIElementAttribute)
+    }
+
+    /// True when the same terminal and the same pane still have focus as when the buffer was typed.
+    private func stillSamePane() -> Bool {
+        guard let app, NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier else { return false }
+        guard let owner, let now = focusedElement() else { return owner == nil }
+        return CFEqual(owner, now)
     }
 
     /// Only prose gets checked: shell commands are full of words no dictionary knows.
@@ -84,7 +109,7 @@ final class TerminalMode {
         Task { @MainActor in
             let issues = await Engine.full(snapshot, longform: false, style: self.watcher.config.houseStyle)
                 .filter { !self.watcher.ignored.contains($0.ignoreKey) && !$0.replacements.isEmpty }
-            guard self.active, self.buffer == snapshot else { return }
+            guard self.active, self.buffer == snapshot, self.stillSamePane() else { return }
             self.show(issues, for: snapshot)
         }
     }
@@ -126,7 +151,7 @@ final class TerminalMode {
     /// Deletes back to the first change and retypes the corrected tail. Safe because the cursor is at the end of
     /// the buffer: any key that could move it resets the buffer.
     private func fix(_ issues: [Issue], in text: String) {
-        guard buffer == text else { NSSound.beep(); return }
+        guard buffer == text, stillSamePane() else { NSSound.beep(); reset(); return }
         var fixed = text as NSString
         for i in issues.sorted(by: { $0.range.location > $1.range.location }) {
             fixed = fixed.replacingCharacters(in: i.range, with: i.replacements[0]) as NSString
