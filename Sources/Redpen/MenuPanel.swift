@@ -8,6 +8,7 @@ protocol PanelHost: AnyObject {
     var config: Config { get set }
     func statusLine() -> (text: String, live: Bool)
     func fixAtCursor()
+    func fixAllAtCursor()
     func deepCheck()
     var canDeepCheck: Bool { get }
     func openSettings()
@@ -28,6 +29,7 @@ struct HelperRow: Identifiable, Equatable {
 final class PanelModel: ObservableObject {
     weak var host: PanelHost?
     @Published var enabled = true { didSet { guard enabled != oldValue else { return }; host?.config.enabled = enabled; host?.config.save() } }
+    @Published var calm = true { didSet { guard calm != oldValue else { return }; host?.config.calm = calm; host?.config.save() } }
     @Published var cardLook = "light" {
         didSet { guard cardLook != oldValue else { return }; host?.config.cardAppearance = cardLook; host?.config.save(); onLookChange?(cardLook) }
     }
@@ -52,6 +54,7 @@ final class PanelModel: ObservableObject {
         trusted = AXIsProcessTrusted()
         enabled = host.config.enabled
         cardLook = host.config.cardAppearance
+        calm = host.config.calm
         let s = host.statusLine()
         status = s.text; live = s.live
         canDeepCheck = host.canDeepCheck
@@ -159,7 +162,7 @@ struct PanelView: View {
             group { actions }
             group { patterns }
             group { helpers }
-            group { cardLook }
+            group { VStack(spacing: 12) { underlineChoice; cardLook } }
             footer
         }
         .padding(16)
@@ -201,6 +204,7 @@ struct PanelView: View {
     private var actions: some View {
         VStack(alignment: .leading, spacing: 12) {
             row("Fix mistake at cursor", key: "\u{2303}\u{2325}R") { close(); model.host?.fixAtCursor() }
+            row("Fix all in this paragraph", key: "\u{2303}\u{2325}\u{21E7}R") { close(); model.host?.fixAllAtCursor() }
             row("Deep check with Claude", key: nil) { close(); model.host?.deepCheck() }
                 .disabled(!model.canDeepCheck)
         }
@@ -306,6 +310,19 @@ struct PanelView: View {
         case .connected: return Text(h.id == "apple" ? "On this Mac" : "Connected").foregroundStyle(.green)
         case .notSetUp: return Text("Not set up").foregroundStyle(.orange)
         case .off: return Text("Off on this Mac").foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder private var underlineChoice: some View {
+        HStack {
+            Text("Underline")
+            Spacer()
+            Picker("Underline", selection: $model.calm) {
+                Text("Mistakes").tag(true)
+                Text("Everything").tag(false)
+            }
+            .pickerStyle(.segmented).labelsHidden().fixedSize()
+            .help("Mistakes: only sure spelling and grammar mistakes. Everything: also your style rules and Apple\u{2019}s maybes.")
         }
     }
 

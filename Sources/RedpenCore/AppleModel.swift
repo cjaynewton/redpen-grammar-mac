@@ -91,6 +91,21 @@ public enum AppleModel {
         return false
     }
 
+    /// Which of the dictionary's guesses the writer meant, judged from the sentence. Nil when unsure.
+    public static func pickWord(_ sentence: String, typo: String, from options: [String]) async -> String? {
+        guard isAvailable, options.count >= 2 else { return nil }
+        // The typo becomes a blank, so the choice rests on grammar and meaning, not on which option looks most like it.
+        guard let r0 = sentence.range(of: typo) else { return nil }
+        let blank = sentence.replacingCharacters(in: r0, with: "___")
+        let session = LanguageModelSession(instructions: "You complete sentences. Answer with the number of one option only.")
+        let list = options.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
+        let q = "Which word makes this sentence correct English?\n\(blank)\n\(list)"
+        guard let r = try? await session.respond(to: q, options: GenerationOptions(temperature: 0)).content,
+              let n = Int(r.trimmingCharacters(in: .whitespacesAndNewlines).prefix { $0.isNumber }), n >= 1, n <= options.count
+        else { return nil }
+        return options[n - 1]
+    }
+
     /// For dangling modifiers: whether the thing named is not a person, group or animal, so it could not have
     /// done the opening action ("the shelves" cannot be "walking into the store"). A plain question about what
     /// the thing is: the small model answers that far more reliably than "could X do Y".

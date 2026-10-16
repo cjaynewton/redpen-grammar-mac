@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import ApplicationServices
 import ServiceManagement
 import RedpenCore
@@ -13,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
     private let settings = SettingsWindow()
     private var lastDeepText: String?
     private var hotKey: HotKey?
+    private var fixAllKey: HotKey?
 
     func applicationDidFinishLaunching(_ n: Notification) {
         Fonts.register()
@@ -78,6 +80,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
         watcher.start()
         GrammarEngine.shared.startIfInstalled()
         hotKey = HotKey { [weak self] in self?.watcher.openNearest() }
+        fixAllKey = HotKey(id: 2, modifiers: controlKey | optionKey | shiftKey, name: "Control-Option-Shift-R") { [weak self] in
+            self?.watcher.fixAllAtCursor()
+        }
         // Start at login by default, once; the menu toggle can turn it off and that choice sticks.
         if !UserDefaults.standard.bool(forKey: "loginItemOffered") {
             UserDefaults.standard.set(true, forKey: "loginItemOffered")
@@ -106,6 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
     func openSettings() { showSettings() }
     func allowAccessibility() { showWelcome() }
     /// Waits for the app you were typing in to take focus back, then opens the card at its cursor.
+    func fixAllAtCursor() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.watcher.fixAllAtCursor() } }
     func fixAtCursor() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.watcher.openNearest() } }
 
     @objc func deepCheck() {

@@ -268,6 +268,8 @@ final class Watcher {
         inFlight.insert(para)
         Task { @MainActor in
             let found = await Engine.deep(para)
+            // Put the word each sentence needs first in spelling suggestions ("thougt" -> though or thought).
+            _ = await Spelling.rank(Spelling.check(para), in: para)
             self.modelCache[para] = found
             self.inFlight.remove(para)
         }
@@ -284,13 +286,14 @@ final class Watcher {
                 model += found.map { var i = $0; i.range = i.range.shifted(by: enclosing.location); return i }
             }
         }
-        let spelling = Engine.spellingAgreed(quickIssues, lt: ltIssues)
+        let spelling = Engine.spellingAgreed(quickIssues, lt: ltIssues).map { Spelling.applyPick($0, in: text) }
         var all = Engine.merge(spelling, Engine.protectNames(ltIssues.filter { $0.kind != .spelling }, in: text))
         all = Engine.merge(all, Engine.protectNames(model, in: text))
         all = Engine.outsideQuotes(all, in: text)
         // Drop anything that no longer matches the text (it was edited since the check).
         all = all.filter { NSMaxRange($0.range) <= ns.length && ns.substring(with: $0.range) == $0.original }
         all = all.filter { !ignored.contains($0.ignoreKey) }
+        if config.calm { all = Engine.calm(all) }
         if Date().timeIntervalSince(lastChange) < 1.5, let cur = AX.range(el, kAXSelectedTextRangeAttribute) {
             all = all.filter { !(NSMaxRange($0.range) == cur.location && $0.kind == .spelling) }
         }
@@ -418,6 +421,11 @@ final class Watcher {
             })
         }
         footer.append(.init(title: "Ignore") { [weak self] in self?.ignored.insert(issue.ignoreKey) })
+        // More than one sure mistake in this paragraph: offer to fix them all at once.
+        let paraRange = (lastText as NSString).paragraphRange(for: NSRange(location: min(issue.range.location, (lastText as NSString).length), length: 0))
+        if issue.kind != .voice, let n = Engine.fixAll(currentIssues(el, lastText), in: paraRange, of: lastText)?.fixed.count, n >= 2 {
+            footer.insert(.init(title: "Fix all \(n)") { [weak self] in self?.fixAll(in: paraRange, el) }, at: 0)
+        }
         let lesson = Lessons.lesson(for: issue)
         // "Spelled \u{201C}test\u{201D}." teaches nothing: show a spelling lesson only when it has a real memory trick.
         let teaches = lesson.map { !($0.rule.hasPrefix("Spelled ")) } ?? false
@@ -446,22 +454,50 @@ final class Watcher {
         return m
     }
 
+    /// Fixes every sure mistake in the paragraph at the cursor (Control-Option-Shift-R).
+    func fixAllAtCursor() {
+        if panel.isVisible { panel.hide() }
+        guard let el = element, !lastText.isEmpty else { NSSound.beep(); return }
+        let cur = AX.range(el, kAXSelectedTextRangeAttribute)?.location ?? 0
+        let ns = lastText as NSString
+        fixAll(in: ns.paragraphRange(for: NSRange(location: min(cur, ns.length), length: 0)), el)
+    }
+
+    /// Fixes each sure mistake on its own, last first so earlier positions stay put. Word by word keeps any bold or
+    /// italics in the paragraph, which replacing the whole paragraph would lose. Apps that need the paste fallback
+    /// get a pause between fixes so one paste never runs into the next.
+    func fixAll(in range: NSRange, _ el: AXUIElement) {
+        guard let text: String = AX.attr(el, kAXValueAttribute),
+              let result = Engine.fixAll(currentIssues(el, text), in: range, of: text) else { NSSound.beep(); return }
+        panel.hide()
+        Log.note("fix all: \(result.fixed.count) in \(bundleID)")
+        Task { @MainActor in
+            for i in result.fixed.reversed() {
+                guard let pasted = self.apply(i, i.replacements[0], in: el) else { NSSound.beep(); return }
+                if pasted { try? await Task.sleep(for: .milliseconds(800)) }
+            }
+        }
+    }
+
     /// Replaces the text through Accessibility; falls back to select-and-paste for apps that refuse.
-    func apply(_ issue: Issue, _ replacement: String, in el: AXUIElement) {
-        guard let text: String = AX.attr(el, kAXValueAttribute) else { NSSound.beep(); return }
+    /// Returns nil if nothing changed, false when written directly, true when it had to paste.
+    @discardableResult
+    func apply(_ issue: Issue, _ replacement: String, in el: AXUIElement) -> Bool? {
+        guard let text: String = AX.attr(el, kAXValueAttribute) else { NSSound.beep(); return nil }
         let ns = text as NSString
-        guard NSMaxRange(issue.range) <= ns.length, ns.substring(with: issue.range) == issue.original else { NSSound.beep(); return }
-        guard AX.setRange(el, issue.range) else { NSSound.beep(); return }
+        guard NSMaxRange(issue.range) <= ns.length, ns.substring(with: issue.range) == issue.original else { NSSound.beep(); return nil }
+        guard AX.setRange(el, issue.range) else { NSSound.beep(); return nil }
         Mistakes.shared.record(issue, replacement: replacement, app: bundleID)
         let expected = ns.replacingCharacters(in: issue.range, with: replacement)
         if AX.set(el, kAXSelectedTextAttribute, replacement as CFString),
            let after: String = AX.attr(el, kAXValueAttribute), after == expected {
             lastText = ""
-            return
+            return false
         }
         // Some apps (Electron, Office) ignore direct writes. Paste over the selection instead.
         Paste.replaceSelection(with: replacement)
         lastText = ""
+        return true
     }
 
     // MARK: - App quirks

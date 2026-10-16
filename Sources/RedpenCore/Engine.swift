@@ -18,6 +18,7 @@ public enum Engine {
         issues = merge(issues, Spelling.dialect(text, style.spelling))
         issues = merge(issues, Rules.check(text, longform: longform, style: style))
         issues = merge(issues, protectNames(await deep(text), in: text))
+        issues = await Spelling.rank(issues, in: text)
         return await fillTranslations(outsideQuotes(issues, in: text))
     }
 
@@ -119,5 +120,38 @@ extension Engine {
         while i >= 0, let c = UnicodeScalar(ns.character(at: i)), CharacterSet.whitespaces.contains(c) { i -= 1 }
         guard i >= 0, let prev = UnicodeScalar(ns.character(at: i)) else { return true }
         return ".!?:\n\u{201C}\"(".unicodeScalars.contains(prev)
+    }
+}
+
+// MARK: - Calm mode and Fix all
+
+extension Engine {
+    /// A sure mistake: spelling or grammar with a fix, not a "maybe" from Apple's model and not a house-style rule.
+    public static func isSure(_ i: Issue) -> Bool {
+        i.kind != .voice && !i.tentative && !(i.replacements.first ?? "").isEmpty
+    }
+
+    /// Calm mode: underline only real spelling and grammar mistakes. Style rules and model maybes stay quiet.
+    public static func calm(_ issues: [Issue]) -> [Issue] {
+        issues.filter { $0.kind != .voice && !$0.tentative }
+    }
+
+    /// Every sure mistake inside `range` that still matches the text, none overlapping, in reading order, plus the
+    /// range as it reads once all are fixed with their first suggestion. Nil when there is nothing to fix.
+    public static func fixAll(_ issues: [Issue], in range: NSRange, of text: String) -> (text: String, fixed: [Issue])? {
+        let ns = text as NSString
+        guard NSMaxRange(range) <= ns.length else { return nil }
+        var used: [Issue] = []
+        for i in issues.filter(isSure).sorted(by: { $0.range.location < $1.range.location })
+        where NSLocationInRange(i.range.location, range) && NSMaxRange(i.range) <= NSMaxRange(range)
+            && ns.substring(with: i.range) == i.original && !used.contains(where: { $0.range.overlaps(i.range) }) {
+            used.append(i)
+        }
+        guard !used.isEmpty else { return nil }
+        var out = ns.substring(with: range) as NSString
+        for i in used.reversed() {
+            out = out.replacingCharacters(in: i.range.shifted(by: -range.location), with: i.replacements[0]) as NSString
+        }
+        return (out as String, used)
     }
 }

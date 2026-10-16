@@ -248,11 +248,58 @@ func safetyChecks() {
     check("LanguageTool's own language list is accepted",
           LanguageTool.looksLikeLanguageTool(Data(#"[{"name":"English (Canada)","code":"en","longCode":"en-CA"}]"#.utf8)))
 
+    // Calm mode and Fix all (D-430).
+    func iss(_ t: String, _ o: String, _ r: String, _ k: IssueKind = .spelling, maybe: Bool = false) -> Issue {
+        var i = Issue(range: (t as NSString).range(of: o), kind: k, message: "m", replacements: [r], original: o)
+        i.tentative = maybe; return i
+    }
+    let para = "We recieved teh samples, to be clear, and they was late."
+    let list = [iss(para, "recieved", "received"), iss(para, "teh", "the"), iss(para, "to be clear, ", "", .voice),
+                iss(para, "they was", "they were", .grammar), iss(para, "late", "tardy", .grammar, maybe: true)]
+    check("calm mode keeps spelling and grammar", Engine.calm(list).count == 3)
+    check("calm mode hides style rules and maybes", !Engine.calm(list).contains { $0.kind == .voice || $0.tentative })
+    let all = Engine.fixAll(list, in: NSRange(location: 0, length: (para as NSString).length), of: para)
+    check("fix all fixes every sure mistake in one go", all?.text == "We received the samples, to be clear, and they were late.")
+    check("fix all leaves style rules and maybes alone", all?.fixed.count == 3)
+    let two = "Teh first line.\nTeh second line."
+    let both = [iss(two, "Teh", "The"), Issue(range: NSRange(location: 16, length: 3), kind: .spelling, message: "m", replacements: ["The"], original: "Teh")]
+    check("fix all stays inside the paragraph", Engine.fixAll(both, in: NSRange(location: 0, length: 16), of: two)?.text == "The first line.\n")
+    check("fix all skips a mistake the writer already changed", Engine.fixAll([iss(para, "teh", "the")], in: NSRange(location: 0, length: 10), of: "We got it.") == nil)
+
     print(failed == 0 ? "safety checks: all pass" : "safety checks: \(failed) failed")
     if failed > 0 { exit(1) }
 }
 
-if CommandLine.arguments.contains("--safety") { safetyChecks() }
+/// Mistakes whose right fix depends on the sentence (`--context`): the first suggestion must be the right word.
+/// Tests/context_spelling.tsv: group, sentence, wrong words, right words.
+@MainActor
+func contextChecks() async {
+    let file = CommandLine.arguments.contains("--heldout") ? "Tests/context_spelling_heldout.tsv" : "Tests/context_spelling.tsv"
+    let tsv = try! String(contentsOfFile: file, encoding: .utf8)
+    var right = 0, flagged = 0, total = 0
+    for line in tsv.split(separator: "\n") {
+        let f = line.split(separator: "\t").map(String.init)
+        guard f.count >= 4 else { continue }
+        total += 1
+        let issues = await Engine.full(f[1], longform: false)
+        let hit = issues.first { $0.original.localizedCaseInsensitiveContains(f[2]) || f[2].localizedCaseInsensitiveContains($0.original) }
+        let first = hit?.replacements.first ?? "-"
+        // Right when the sentence with the first suggestion applied reads as one of the expected fixes.
+        let fixed = hit.map { (f[1] as NSString).replacingCharacters(in: $0.range, with: first) } ?? f[1]
+        let words = Set(fixed.lowercased().split { !$0.isLetter && $0 != "'" && $0 != "\u{2019}" }.map(String.init))
+        let ok = hit != nil && f[3].split(separator: "|").contains { alt in
+            let a = alt.lowercased().split(separator: " ").map(String.init)
+            return a.count == 1 ? words.contains(a[0]) : fixed.lowercased().contains(alt.lowercased())
+        }
+        if hit != nil { flagged += 1 }
+        if ok { right += 1 }
+        print(ok ? "  pass" : hit == nil ? "  MISS" : "  WRONG", f[1], "->", hit.map { "\($0.original) -> \(first)" } ?? "not flagged")
+    }
+    print("context spelling: \(flagged)/\(total) flagged, \(right)/\(total) first suggestion right")
+}
+
+if CommandLine.arguments.contains("--context") { await contextChecks() }
+else if CommandLine.arguments.contains("--safety") { safetyChecks() }
 else if CommandLine.arguments.contains("--card") { cardChecks() }
 else if CommandLine.arguments.contains("--email") { emailChecks() }
 else if CommandLine.arguments.contains("--patterns") { patternsDemo() } else { await run() }

@@ -109,6 +109,7 @@ final class TerminalMode {
         Task { @MainActor in
             let issues = await Engine.full(snapshot, longform: false, style: self.watcher.config.houseStyle)
                 .filter { !self.watcher.ignored.contains($0.ignoreKey) && !$0.replacements.isEmpty }
+                .filter { !self.watcher.config.calm || Engine.isSure($0) }
             guard self.active, self.buffer == snapshot, self.stillSamePane() else { return }
             self.show(issues, for: snapshot)
         }
