@@ -477,8 +477,10 @@ final class Watcher {
         Task { @MainActor in
             defer { self.fixAllRunning = false }
             for i in result.fixed.reversed() {
-                // Stop the moment the writer moves to another field or app: a paste would land there.
-                guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app, let now = self.element, CFEqual(now, el) else {
+                // Stop the moment the writer moves to another field or app: a paste would land there. Ask the Mac
+                // for the focused field right now, not Redpen's copy from its last look.
+                guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app,
+                      let now = AX.element(AXUIElementCreateSystemWide(), kAXFocusedUIElementAttribute), CFEqual(now, el) else {
                     Log.note("fix all: stopped, focus moved"); return
                 }
                 guard let pasted = self.apply(i, i.replacements[0], in: el) else { return }

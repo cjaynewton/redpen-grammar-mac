@@ -83,11 +83,10 @@ final class TerminalMode {
         }
     }
 
-    /// The focused pane, or the focused window for terminals that don't expose panes.
+    /// The focused pane. Nil for terminals that don't say which pane has focus; a window can't tell its tabs apart.
     private func focusedElement() -> AXUIElement? {
         guard let app else { return nil }
-        let appEl = AXUIElementCreateApplication(app.processIdentifier)
-        return AX.element(appEl, kAXFocusedUIElementAttribute) ?? AX.element(appEl, kAXFocusedWindowAttribute)
+        return AX.element(AXUIElementCreateApplication(app.processIdentifier), kAXFocusedUIElementAttribute)
     }
 
     /// True only when the same terminal and the same pane still have focus as when the buffer was typed. If Redpen
@@ -110,7 +109,8 @@ final class TerminalMode {
     private func tick() {
         guard active, !buffer.isEmpty, Date().timeIntervalSince(lastKey) > 0.9, buffer != checkedBuffer else { return }
         checkedBuffer = buffer
-        guard looksLikeProse(buffer) else { return }
+        // No bubble where Redpen can't tell which pane the text is in: it couldn't fix it safely.
+        guard looksLikeProse(buffer), owner != nil else { return }
         let snapshot = buffer
         Task { @MainActor in
             let issues = await Engine.full(snapshot, longform: false, style: self.watcher.config.houseStyle)
