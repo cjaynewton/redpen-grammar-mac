@@ -496,9 +496,30 @@ final class Watcher {
         guard let live else { return false }
         if CFEqual(live, el) { return true }
         guard config.officeApps.contains(app.bundleIdentifier ?? ""),
-              ["AXSplitGroup", "AXScrollArea", "AXGroup", "AXLayoutArea"].contains(AX.attr(live, kAXRoleAttribute) ?? ""),
-              let inner = textInside(live) else { return false }
+              ["AXSplitGroup", "AXScrollArea", "AXGroup", "AXLayoutArea", "AXApplication", "AXWindow"].contains(AX.attr(live, kAXRoleAttribute) ?? ""),
+              let inner = onlyTextArea(in: live) else { return false }
         return CFEqual(inner, el)
+    }
+
+    /// The text area inside a container only when there is no doubt which one: the single one marked focused, or
+    /// the only one there is. Nil when it would be a guess.
+    private func onlyTextArea(in root: AXUIElement) -> AXUIElement? {
+        var areas: [AXUIElement] = [], focused: [AXUIElement] = []
+        var visited = 0
+        func walk(_ e: AXUIElement, _ depth: Int) {
+            guard depth < 10, visited < 600 else { return }
+            visited += 1
+            if (AX.attr(e, kAXRoleAttribute) ?? "") == "AXTextArea" {
+                areas.append(e)
+                if let f: Bool = AX.attr(e, kAXFocusedAttribute), f { focused.append(e) }
+                return
+            }
+            for c in (AX.attr(e, kAXChildrenAttribute) as [AXUIElement]?) ?? [] { walk(c, depth + 1) }
+        }
+        walk(root, 0)
+        // A walk cut short by the limits may have missed other areas, so it can't prove there is only one.
+        if focused.count == 1 { return focused[0] }
+        return focused.isEmpty && areas.count == 1 && visited < 600 ? areas[0] : nil
     }
 
     /// Replaces the text through Accessibility; falls back to select-and-paste for apps that refuse.
