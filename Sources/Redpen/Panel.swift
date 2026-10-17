@@ -29,8 +29,7 @@ final class SuggestionPanel: NSObject {
         appearance == "dark" || (appearance == "system" && NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
     }
 
-    /// `next`: in the Keyboard style, the card moves on to the next mistake after this choice runs.
-    struct Choice { let title: String; var next = false; let run: () -> Void }
+    struct Choice { let title: String; let run: () -> Void }
 
     /// What the card shows. `marks` pairs each flagged text with its fix (nil when there is no fix to offer).
     struct Card {
@@ -47,8 +46,8 @@ final class SuggestionPanel: NSObject {
         var footer: [Choice] = []
         /// What is wrong in a few words ("Misspelled word"), for the Whole sentence style.
         var title: String? = nil
-        /// The sentence holding the mistake and the mistake's range inside it.
-        var sentence: (text: String, range: NSRange)? = nil
+        /// The sentence holding the mistake, the mistake's range inside it, and the raw fix ("" deletes).
+        var sentence: (text: String, range: NSRange, fix: String)? = nil
         /// This mistake's place among all of them in the field: (1, 4) is "1 of 4".
         var position: (Int, Int)? = nil
         var ignore: Choice? = nil
@@ -65,6 +64,9 @@ final class SuggestionPanel: NSObject {
     private var current: Card?
     private var shownAt: (anchor: CGRect, avoid: [CGRect])?
     private var whyOpen = false
+    /// Bumped whenever the card is shown, replaced or hidden, so a key caught for one card never acts on another.
+    private var gen = 0
+    private var appObserver: Any?
     private var keyTap: CFMachPort?
     private var tapSource: CFRunLoopSource?
 
@@ -103,6 +105,7 @@ final class SuggestionPanel: NSObject {
     }
 
     private func present(_ card: Card, _ anchor: CGRect, _ avoid: [CGRect]) {
+        gen += 1
         current = card
         shownAt = (anchor, avoid)
         let (box, size) = build(card)
@@ -123,8 +126,16 @@ final class SuggestionPanel: NSObject {
             // style Return, Esc and Tab belong to the card and never reach here.
             outsideMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.rightMouseDown, .keyDown]) { [weak self] e in
                 guard let self else { return }
-                if e.type == .keyDown, self.keyTap != nil, Self.cardKeys.contains(Int(e.keyCode)) { return }
+                if e.type == .keyDown, self.keyTap != nil, Self.cardKeys.contains(Int(e.keyCode)),
+                   e.modifierFlags.intersection([.command, .control, .option]).isEmpty { return }
                 self.hide()
+            }
+        }
+        if appObserver == nil {
+            // Switching apps (Cmd-Tab, a click elsewhere, Redpen's own windows) closes the card and frees the keys.
+            appObserver = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.hide() }
             }
         }
     }
@@ -194,7 +205,7 @@ final class SuggestionPanel: NSObject {
         if let msg = card.message { s.addArrangedSubview(wrapping(serifText(msg, 19, p.ink))) }
         var buttons = buttonsFor(card, p, height: 40, size: 15, primaryTitle: nil, altPrefix: "")
         if let ig = card.ignore { buttons.append(button(ig, filled: false, p, height: 40, size: 15)) }
-        if !buttons.isEmpty { s.addArrangedSubview(row(buttons, spacing: 8)) }
+        if !buttons.isEmpty { s.addArrangedSubview(flow(buttons, spacing: 8)) }
         if let lesson = lessonText(card, p, size: 17, countSize: 13) {
             s.addArrangedSubview(rule(p))
             s.setCustomSpacing(12, after: s.arrangedSubviews.last!)
@@ -203,7 +214,7 @@ final class SuggestionPanel: NSObject {
         var links: [NSView] = []
         if let f = card.fixAll { links.append(link(Choice(title: "Fix all \(f.count) sure mistakes in this paragraph", run: f.choice.run), p, size: 14)) }
         links += card.footer.map { link($0, p, size: 14) }
-        if !links.isEmpty { s.addArrangedSubview(row(links, spacing: 20)) }
+        if !links.isEmpty { s.addArrangedSubview(flow(links, spacing: 20)) }
         outer.addArrangedSubview(s)
     }
 
@@ -213,15 +224,19 @@ final class SuggestionPanel: NSObject {
         let title = NSTextField(labelWithAttributedString: NSAttributedString(string: card.title ?? card.kind, attributes: [
             .font: NSFont.systemFont(ofSize: 17, weight: .semibold), .foregroundColor: p.ink]))
         s.addArrangedSubview(spread(title, kindLabel(card)))
-        if let sent = card.sentence, let fix = card.marks.first?.new {
+        if let sent = card.sentence {
+            let fix = sent.fix
             let ns = sent.text as NSString
             let t = NSMutableAttributedString(string: ns.substring(to: sent.range.location), attributes: [.font: Self.serif(19), .foregroundColor: p.ink])
             t.append(NSAttributedString(string: ns.substring(with: sent.range), attributes: [
                 .font: Self.serif(19), .foregroundColor: p.mid,
                 .strikethroughStyle: NSUnderlineStyle.single.rawValue, .strikethroughColor: card.color]))
-            t.append(NSAttributedString(string: " ", attributes: [.font: Self.serif(19)]))
-            t.append(NSAttributedString(string: fix.isEmpty ? "(cut)" : fix, attributes: [
-                .font: Self.serif(19, weight: .medium), .foregroundColor: p.ink, .backgroundColor: p.fix]))
+            // A deletion shows only the struck word; a fix follows it, exactly as it will be typed.
+            if !fix.isEmpty {
+                t.append(NSAttributedString(string: "\u{2009}", attributes: [.font: Self.serif(19)]))
+                t.append(NSAttributedString(string: fix, attributes: [
+                    .font: Self.serif(19, weight: .medium), .foregroundColor: p.ink, .backgroundColor: p.fix]))
+            }
             t.append(NSAttributedString(string: ns.substring(from: NSMaxRange(sent.range)), attributes: [.font: Self.serif(19), .foregroundColor: p.ink]))
             t.addAttribute(.paragraphStyle, value: lines(1.3), range: NSRange(location: 0, length: t.length))
             s.addArrangedSubview(tinted(wrapping(t, width: textWidth - 32), p.soft))
@@ -242,9 +257,9 @@ final class SuggestionPanel: NSObject {
                 s.addArrangedSubview(link(why, p, size: 13.5, keepOpen: true))
             }
         }
-        var buttons = buttonsFor(card, p, height: 40, size: 15, primaryTitle: "Accept", altPrefix: "Use ")
-        if let ig = card.ignore { buttons.append(button(Choice(title: "Dismiss", next: ig.next, run: ig.run), filled: false, p, height: 40, size: 15)) }
-        if !buttons.isEmpty { s.setCustomSpacing(16, after: s.arrangedSubviews.last!); s.addArrangedSubview(row(buttons, spacing: 8)) }
+        var buttons = buttonsFor(card, p, height: 40, size: 15, primaryTitle: card.marks.count == 1 ? "Accept" : nil, altPrefix: "Use ")
+        if let ig = card.ignore { buttons.append(button(Choice(title: "Dismiss", run: ig.run), filled: false, p, height: 40, size: 15)) }
+        if !buttons.isEmpty { s.setCustomSpacing(16, after: s.arrangedSubviews.last!); s.addArrangedSubview(flow(buttons, spacing: 8)) }
         outer.addArrangedSubview(s)
 
         var left: [NSView] = card.footer.map { link($0, p, size: 13.5) }
@@ -276,19 +291,19 @@ final class SuggestionPanel: NSObject {
         if let msg = card.message { s.addArrangedSubview(wrapping(serifText(msg, 18, p.ink))) }
         if let lesson = lessonText(card, p, size: 16.5, countSize: 0) { s.addArrangedSubview(wrapping(lesson)) }
         if !card.alts.isEmpty {
-            s.addArrangedSubview(row(card.alts.prefix(3).map { a in
-                button(Choice(title: "or \u{201C}\(a.title)\u{201D}", next: a.next, run: a.run), filled: false, p, height: 34, size: 14)
+            s.addArrangedSubview(flow(card.alts.prefix(3).map { a in
+                button(Choice(title: "or \u{201C}\(a.title)\u{201D}", run: a.run), filled: false, p, height: 34, size: 14)
             }, spacing: 8))
         }
         var buttons: [NSView] = []
-        if let pc = card.primary { buttons.append(button(Choice(title: "Accept", next: pc.next, run: pc.run), filled: true, p, height: 40, size: 15, hint: "Return")) }
-        if let ig = card.ignore { buttons.append(button(Choice(title: "Skip", next: ig.next, run: ig.run), filled: false, p, height: 40, size: 15, hint: "Esc")) }
-        if let f = card.fixAll { buttons.append(button(Choice(title: "Fix all \(f.count)", run: f.choice.run), filled: false, p, height: 40, size: 15, hint: "\u{2303}\u{2325}\u{21E7}R")) }
-        if !buttons.isEmpty { s.setCustomSpacing(16, after: s.arrangedSubviews.last!); s.addArrangedSubview(row(buttons, spacing: 8)) }
+        if let pc = card.primary { buttons.append(button(Choice(title: card.marks.count == 1 ? "Accept" : pc.title, run: pc.run), filled: true, p, height: 40, size: 15, hint: card.takesKeys ? "Return" : nil)) }
+        if let ig = card.ignore { buttons.append(button(Choice(title: "Skip", run: ig.run), filled: false, p, height: 40, size: 15, hint: card.takesKeys ? "Esc" : nil)) }
+        if let f = card.fixAll { buttons.append(button(Choice(title: "Fix all \(f.count)", run: f.choice.run), filled: false, p, height: 40, size: 15, hint: card.takesKeys ? "\u{2303}\u{2325}\u{21E7}R" : nil)) }
+        if !buttons.isEmpty { s.setCustomSpacing(16, after: s.arrangedSubviews.last!); s.addArrangedSubview(flow(buttons, spacing: 8)) }
         outer.addArrangedSubview(s)
 
         var left: [NSView] = []
-        if card.onStep != nil, (card.position?.1 ?? 0) > 1 {
+        if card.takesKeys, card.onStep != nil, (card.position?.1 ?? 0) > 1 {
             left.append(NSTextField(labelWithAttributedString: NSAttributedString(string: "Tab for the next mistake", attributes: [
                 .font: NSFont.systemFont(ofSize: 13.5), .foregroundColor: p.mid])))
         }
@@ -360,12 +375,31 @@ final class SuggestionPanel: NSObject {
     /// The fix as the dark button, other fixes outlined beside it.
     private func buttonsFor(_ card: Card, _ p: Palette, height: CGFloat, size: CGFloat, primaryTitle: String?, altPrefix: String) -> [NSView] {
         var out: [NSView] = []
-        if let pc = card.primary { out.append(button(primaryTitle.map { Choice(title: $0, next: pc.next, run: pc.run) } ?? pc, filled: true, p, height: height, size: size)) }
+        if let pc = card.primary { out.append(button(primaryTitle.map { Choice(title: $0, run: pc.run) } ?? pc, filled: true, p, height: height, size: size)) }
         for a in card.alts.prefix(3) {
             let t = altPrefix.isEmpty ? a.title : "\(altPrefix)\u{201C}\(a.title)\u{201D}"
-            out.append(button(Choice(title: t, next: a.next, run: a.run), filled: false, p, height: height, size: size))
+            out.append(button(Choice(title: t, run: a.run), filled: false, p, height: height, size: size))
         }
         return out
+    }
+
+    /// Lays views left to right and starts a new line when the next one would not fit, so no button is cut short.
+    private func flow(_ views: [NSView], spacing: CGFloat, width: CGFloat? = nil) -> NSView {
+        let limit = width ?? textWidth
+        var lines: [[NSView]] = [[]]
+        var used: CGFloat = 0
+        for v in views {
+            let w = v.fittingSize.width
+            if !lines[lines.count - 1].isEmpty && used + spacing + w > limit { lines.append([]); used = 0 }
+            used += (lines[lines.count - 1].isEmpty ? 0 : spacing) + w
+            lines[lines.count - 1].append(v)
+        }
+        if lines.count == 1 { return row(lines[0], spacing: spacing) }
+        let col = NSStackView(views: lines.map { row($0, spacing: spacing) })
+        col.orientation = .vertical
+        col.alignment = .leading
+        col.spacing = 8
+        return col
     }
 
     private func row(_ views: [NSView], spacing: CGFloat) -> NSStackView {
@@ -394,13 +428,24 @@ final class SuggestionPanel: NSObject {
         band.wantsLayer = true
         if background && !ruled { band.layer?.backgroundColor = p.soft.cgColor }
         band.translatesAutoresizingMaskIntoConstraints = false
-        var items = left.map(firm)
-        items.append(gap())
-        if let right { items.append(firm(right)) }
-        let r = NSStackView(views: items)
-        r.orientation = .horizontal
-        r.alignment = .centerY
-        r.spacing = 16
+        let avail = width - side * 2
+        let leftWidth = left.map { $0.fittingSize.width }.reduce(0, +) + CGFloat(max(left.count - 1, 0)) * 16
+        let r: NSStackView
+        if leftWidth + (right.map { $0.fittingSize.width + 16 } ?? 0) <= avail {
+            var items = left.map(firm)
+            items.append(gap())
+            if let right { items.append(firm(right)) }
+            r = NSStackView(views: items)
+            r.orientation = .horizontal
+            r.alignment = .centerY
+            r.spacing = 16
+        } else {
+            // Too much for one line: the left items flow, the right one goes underneath.
+            r = NSStackView(views: [flow(left, spacing: 16, width: avail)] + (right.map { [$0] } ?? []))
+            r.orientation = .vertical
+            r.alignment = .leading
+            r.spacing = 8
+        }
         r.translatesAutoresizingMaskIntoConstraints = false
         band.addSubview(r)
         NSLayoutConstraint.activate([
@@ -499,7 +544,8 @@ final class SuggestionPanel: NSObject {
             let back = event.flags.contains(.maskShift)
             guard event.flags.intersection([.maskCommand, .maskControl, .maskAlternate]).isEmpty,
                   card.handles(code) else { return Unmanaged.passUnretained(event) }
-            DispatchQueue.main.async { card.key(code, back: back) }
+            let g = card.gen
+            DispatchQueue.main.async { card.key(code, back: back, gen: g) }
             return nil
         }
         guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
@@ -530,8 +576,8 @@ final class SuggestionPanel: NSObject {
         }
     }
 
-    private func key(_ code: Int, back: Bool) {
-        guard let c = current else { return }
+    private func key(_ code: Int, back: Bool, gen g: Int) {
+        guard g == gen, panel.isVisible, let c = current else { return }
         switch code {
         case 36, 76: if let pc = c.primary { choose(pc) }
         case 53: if let ig = c.ignore { choose(ig) } else { hide() }
@@ -540,12 +586,9 @@ final class SuggestionPanel: NSObject {
         }
     }
 
-    /// Runs a choice; in the Keyboard style a fix or skip moves straight on to the next mistake.
     private func choose(_ c: Choice) {
-        let step = style == "keyboard" && c.next ? current?.onStep : nil
         hide()
         c.run()
-        step?(0)
     }
 
     private func lines(_ multiple: CGFloat) -> NSParagraphStyle {
@@ -616,8 +659,11 @@ final class SuggestionPanel: NSObject {
     @objc private func tapInPlace(_ sender: NSButton) { choices[sender.tag].run() }
 
     func hide() {
+        gen += 1
+        current = nil
         panel.orderOut(nil)
         removeKeys()
         if let m = outsideMonitor { NSEvent.removeMonitor(m); outsideMonitor = nil }
+        if let o = appObserver { NSWorkspace.shared.notificationCenter.removeObserver(o); appObserver = nil }
     }
 }

@@ -82,8 +82,8 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        // A fixed size: a grouped Form scrolls, so on its own it asks for no height and the window opened empty.
-        .frame(width: 480, height: 640)
+        .frame(width: 480)
+        .frame(minHeight: 300, maxHeight: .infinity)
         .onAppear { model.checkEngine() }
     }
 }
@@ -103,12 +103,21 @@ final class SettingsWindow {
         try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
     }
 
-    private static func makeWindow(_ host: NSViewController) -> NSWindow {
+    /// 640 points tall, or less on a short screen; the form scrolls inside.
+    private static var size: NSSize {
+        let visible = NSScreen.main?.visibleFrame.height ?? 800
+        return NSSize(width: 480, height: max(300, min(640, visible - 60)))
+    }
+
+    /// The window sets the size, not the view: a grouped Form scrolls, so it asks for no height of its own and the
+    /// window opened 1 by 0 points.
+    private static func makeWindow(_ host: NSHostingController<SettingsView>) -> NSWindow {
+        host.sizingOptions = []
         let w = NSWindow(contentViewController: host)
         w.title = "Redpen Settings"
         w.styleMask = [.titled, .closable]
         w.isReleasedWhenClosed = false
-        w.setContentSize(NSSize(width: 480, height: 640))
+        w.setContentSize(size)
         w.center()
         return w
     }
@@ -122,7 +131,8 @@ final class SettingsWindow {
         } else {
             window?.contentViewController = host
         }
-        window?.setContentSize(NSSize(width: 480, height: 640))
+        host.sizingOptions = []
+        window?.setContentSize(Self.size)
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
     }

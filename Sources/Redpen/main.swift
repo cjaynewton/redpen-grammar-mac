@@ -35,15 +35,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
             card.ignore = .init(title: "Ignore") {}
             card.title = "Verb doesn\u{2019}t match"
             let sentence = "If I was the buyer, I would wait."
-            card.sentence = (sentence, (sentence as NSString).range(of: "was"))
+            card.sentence = (sentence, (sentence as NSString).range(of: "was"), "were")
             card.position = (2, 4)
             card.count = 3
             card.fixAll = (3, .init(title: "Fix all 3") {})
             card.footer = []
             card.onStep = { _ in }
-            for style in ["roomy", "sentence", "keyboard"] {
-                for look in ["light", "dark"] {
-                    SuggestionPanel.render(card, appearance: look, style: style, to: "\(CommandLine.arguments[i + 1])-\(style)-\(look).png")
+            // Crowded: long alternatives, a dictionary link and a count, which must wrap rather than cut words short.
+            var long = SuggestionPanel.Card(kind: "Spelling", color: IssueKind.spelling.color, marks: [("controversal", "controversial")],
+                                            message: nil, why: nil, example: nil, count: 4)
+            long.primary = .init(title: "Use \u{201C}controversial\u{201D}") {}
+            long.alts = ["contentious", "controversially", "conversational"].map { t in .init(title: t) {} }
+            long.ignore = .init(title: "Ignore") {}
+            long.footer = [.init(title: "Add to dictionary") {}]
+            long.fixAll = (5, .init(title: "Fix all 5") {})
+            long.position = (3, 12); long.onStep = { _ in }
+            long.title = "Misspelled word"
+            let ls = "It was a controversal call."
+            long.sentence = (ls, (ls as NSString).range(of: "controversal"), "controversial")
+            // A deletion and the Terminal card (which never takes keys, so shows no key hints).
+            var cut = SuggestionPanel.Card(kind: "Grammar", color: IssueKind.grammar.color, marks: [("very", "Cut it")],
+                                           message: "Drop the extra word.", why: nil, example: nil)
+            cut.primary = .init(title: "Cut it") {}
+            cut.ignore = .init(title: "Ignore") {}
+            cut.title = "Extra word"
+            let cs = "This is very very good."
+            cut.sentence = (cs, NSRange(location: 8, length: 5), "")
+            var term = SuggestionPanel.Card(kind: "Terminal", color: IssueKind.spelling.color, marks: [("teh", "the"), ("recieved", "received")],
+                                            message: nil, why: nil, example: nil)
+            term.primary = .init(title: "Fix all 2") {}
+            term.ignore = .init(title: "Ignore") {}
+            term.takesKeys = false
+            for (name, c) in [("main", card), ("long", long), ("cut", cut), ("term", term)] {
+                for style in ["roomy", "sentence", "keyboard"] {
+                    for look in ["light", "dark"] {
+                        SuggestionPanel.render(c, appearance: look, style: style, to: "\(CommandLine.arguments[i + 1])-\(name)-\(style)-\(look).png")
+                    }
                 }
             }
             exit(0)
@@ -110,6 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
         guard let button = status.button else { return }
         // The focused field must be read before the panel takes focus away.
         if !panel.isShown { lastDeepText = watcher.textForDeepCheck() }
+        watcher.panel.hide()  // the fix card and its keys never stay open behind Redpen's menu
         panel.toggle(from: button)
     }
 

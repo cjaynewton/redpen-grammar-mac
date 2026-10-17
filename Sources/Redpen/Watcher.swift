@@ -26,6 +26,8 @@ final class Watcher {
     private var ltInFlight = false
     private var ltFailedAt = Date.distantPast        // last time LanguageTool gave no answer
     private var fixAllRunning = false
+    private var navGen = 0                         // bumped on every field change, cancelling a pending next-mistake step
+    private var watcherCard = false                // the open card is this watcher's (not Terminal's)
     private var modelCache: [String: [Issue]] = [:]  // paragraph text -> issues relative to the paragraph
     private var inFlight: Set<String> = []
     var ignored: Set<String> = []
@@ -96,6 +98,8 @@ final class Watcher {
     }
 
     func clear() {
+        navGen += 1
+        if watcherCard { panel.hide(); watcherCard = false; cardMark = nil }
         element = nil
         ltIssues = []
         ltKey = ""
@@ -237,11 +241,16 @@ final class Watcher {
         }
     }
 
-    private func runLanguageTool(_ el: AXUIElement, _ text: String) {
+    /// The paragraphs LanguageTool checks and the key its result is stored under.
+    private func ltSlice(_ el: AXUIElement, _ text: String) -> (key: String, slice: String, range: NSRange) {
         let ns = text as NSString
         let pr = ns.paragraphRange(for: window(el, text))
         let slice = ns.substring(with: pr)
-        let key = "\(pr.location)|\(slice)"
+        return ("\(pr.location)|\(slice)", slice, pr)
+    }
+
+    private func runLanguageTool(_ el: AXUIElement, _ text: String) {
+        let (key, slice, pr) = ltSlice(el, text)
         guard key != ltKey, !ltInFlight, Date().timeIntervalSince(ltFailedAt) > 3 else { return }
         ltInFlight = true
         Task { @MainActor in
@@ -412,8 +421,16 @@ final class Watcher {
             let t = rep.trimmingCharacters(in: .whitespaces)
             return rep.isEmpty ? "Cut it" : t.isEmpty ? "Replace" : t
         }
+        // Keyboard card: after a fix that landed, or a skip, open the next mistake in this same field.
+        let keyboard = config.cardStyle == "keyboard"
+        func fixing(_ rep: String) -> () -> Void {
+            { [weak self] in
+                guard let self, self.apply(issue, rep, in: el) != nil else { return }
+                if keyboard { self.step(from: issue, 0, in: el) }
+            }
+        }
         func use(_ rep: String) -> SuggestionPanel.Choice {
-            .init(title: rep.isEmpty ? "Cut it" : "Use \u{201C}\(shown(rep))\u{201D}", next: true) { [weak self] in self?.apply(issue, rep, in: el) }
+            .init(title: rep.isEmpty ? "Cut it" : "Use \u{201C}\(shown(rep))\u{201D}", run: fixing(rep))
         }
         var footer: [SuggestionPanel.Choice] = []
         if issue.kind == .spelling {
@@ -440,20 +457,24 @@ final class Watcher {
                                         count: lesson.map { Mistakes.shared.count($0.id) } ?? 0)
         if let first = reps.first {
             card.primary = use(first)
-            card.alts = reps.dropFirst().map { rep in .init(title: shown(rep), next: true) { [weak self] in self?.apply(issue, rep, in: el) } }
+            card.alts = reps.dropFirst().map { rep in .init(title: shown(rep), run: fixing(rep)) }
         }
         card.footer = footer
-        card.ignore = .init(title: "Ignore", next: true) { [weak self] in self?.ignored.insert(issue.ignoreKey) }
+        card.ignore = .init(title: "Ignore") { [weak self] in
+            self?.ignored.insert(issue.ignoreKey)
+            if keyboard { self?.step(from: issue, 0, in: el) }
+        }
         card.fixAll = fixAll
         card.title = Self.cardTitle(issue)
         if let (s, at) = Spelling.sentence(around: issue.range, in: lastText), (s as NSString).length <= 280 {
             // Trailing spaces and line breaks only; the mistake's offset counts from the sentence's start.
             var text = s
             while let last = text.last, last.isWhitespace, (text as NSString).length > at + issue.range.length { text.removeLast() }
-            card.sentence = (text, NSRange(location: at, length: issue.range.length))
+            card.sentence = (text, NSRange(location: at, length: issue.range.length), reps.first ?? "")
         }
         if let i = all.firstIndex(of: issue) { card.position = (i + 1, all.count) }
-        card.onStep = { [weak self] dir in self?.step(from: issue, dir) }
+        card.onStep = { [weak self] dir in self?.step(from: issue, dir, in: el) }
+        watcherCard = true
         panel.style = config.cardStyle
         panel.appearance = config.cardAppearance
         panel.show(card, below: anchor, avoid: marks.filter { $0.issue != issue }.map(\.rect))
@@ -469,26 +490,49 @@ final class Watcher {
         }
     }
 
-    /// Keyboard card: opens the next (1) or previous (-1) mistake, or after a fix (0) the first one from that
-    /// spot on. A fix needs a moment to land and be read back, so 0 waits for fresh text.
-    private func step(from issue: Issue, _ dir: Int, tries: Int = 0) {
-        let wait = dir == 0 ? 0.45 : 0.0
-        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
-            guard let self, let el = self.element else { return }
-            if self.lastText.isEmpty { if tries < 5 { self.step(from: issue, dir, tries: tries + 1) }; return }
-            let all = self.currentIssues(el, self.lastText).sorted { $0.range.location < $1.range.location }
-            guard let firstIssue = all.first, let lastIssue = all.last else { return }
-            let at = issue.range.location
-            let pick: Issue
-            switch dir {
-            case -1: pick = all.last { $0.range.location < at } ?? lastIssue
-            case 1: pick = all.first { $0.range.location > at } ?? firstIssue
-            default: pick = all.first { $0.range.location >= at } ?? firstIssue
-            }
-            guard let anchor = self.marks.first(where: { $0.issue == pick })?.rect ?? self.lineRects(el, pick.range).first.map(AX.toCocoa) else { return }
-            self.cardMark = self.marks.first { $0.issue == pick }
-            self.open(pick, in: el, anchor: anchor)
+    /// Keyboard card: opens the next (1) or previous (-1) mistake, or after a fix or skip (0) the first one from
+    /// that spot on. Only ever in the field the card was opened in: switching fields or apps cancels it, and after a
+    /// fix it waits until the new text has been checked, so it never opens on positions from before the fix.
+    private func step(from issue: Issue, _ dir: Int, in target: AXUIElement) {
+        let ticket = navGen
+        let started = Date()
+        DispatchQueue.main.asyncAfter(deadline: .now() + (dir == 0 ? 0.3 : 0)) { [weak self] in
+            self?.tryStep(from: issue, dir, in: target, ticket: ticket, started: started)
         }
+    }
+
+    private func tryStep(from issue: Issue, _ dir: Int, in target: AXUIElement, ticket: Int, started: Date) {
+        guard ticket == navGen, let el = element, CFEqual(el, target), stillFocused(target) else {
+            Log.note("next mistake: cancelled, the field changed"); return
+        }
+        let live: String? = AX.attr(el, kAXValueAttribute)
+        guard live == lastText, !lastText.isEmpty, checked(el, lastText) else {
+            if Date().timeIntervalSince(started) < 3 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                    self?.tryStep(from: issue, dir, in: target, ticket: ticket, started: started)
+                }
+            } else { Log.note("next mistake: gave up waiting for the check") }
+            return
+        }
+        let all = currentIssues(el, lastText).sorted { $0.range.location < $1.range.location }
+        guard let firstIssue = all.first, let lastIssue = all.last else { return }
+        let at = issue.range.location
+        let pick: Issue
+        switch dir {
+        case -1: pick = all.last { $0.range.location < at } ?? lastIssue
+        case 1: pick = all.first { $0.range.location > at } ?? firstIssue
+        default: pick = all.first { $0.range.location >= at } ?? firstIssue
+        }
+        guard let anchor = marks.first(where: { $0.issue == pick })?.rect ?? lineRects(el, pick.range).first.map(AX.toCocoa) else { return }
+        cardMark = marks.first { $0.issue == pick }
+        open(pick, in: el, anchor: anchor)
+    }
+
+    /// True once this text has had its quick check and LanguageTool has answered for it. When LanguageTool is off
+    /// or not answering, the quick check is enough.
+    private func checked(_ el: AXUIElement, _ text: String) -> Bool {
+        guard lastQuickAt >= lastChange else { return false }
+        return ltKey == ltSlice(el, text).key || Date().timeIntervalSince(ltFailedAt) < 10
     }
 
     /// The engine's message, unless it only repeats the fix already shown ("Did you mean \u{201C}test\u{201D}?").
