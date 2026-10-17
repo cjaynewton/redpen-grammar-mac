@@ -23,14 +23,15 @@ final class DeepCheck {
 
     private func ask() {
         guard let text = lastText, let config = lastConfig else { return }
-        let name = config.deepCheckName
+        let name = config.deepCheckWith == "auto" ? "your AI" : config.deepCheckName
         show(mode == .email ? "Asking \(name) to rewrite this as an email\u{2026}" : "Asking \(name)\u{2026}")
-        let job = DeepCheck.job(config, prompt: DeepPrompt.build(config.houseStyle, mode: mode), input: text)
+        let prompt = DeepPrompt.build(config.houseStyle, mode: mode)
         // Only the newest request may fill the window; an older one finishing late is dropped.
         request += 1
         let id = request
         Task.detached {
-            let result = DeepCheck.call(job)
+            // On Automatic, finding who is signed in starts helper programs, so it happens here, off the main thread.
+            let result = DeepCheck.call(DeepCheck.job(config, prompt: prompt, input: text))
             await MainActor.run { if id == self.request { self.show(result) } }
         }
     }
@@ -77,7 +78,7 @@ final class DeepCheck {
     nonisolated static func job(_ c: Config, prompt: String, input: String) -> Job {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("redpen-deep-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        switch c.deepCheckWith {
+        switch c.resolvedDeepWith() {
         case "chatgpt":
             let answer = folder.appendingPathComponent("answer.txt")
             return Job(name: "ChatGPT", tool: "Codex", path: c.codexExecutable,

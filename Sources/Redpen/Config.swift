@@ -31,12 +31,13 @@ struct Config: Codable {
     }
     /// The model name passed to Claude Code. Set from `deepCheckSpeed`; kept so older files still load.
     var deepCheckModel = "opus"
-    /// Who Deep check asks: "claude" (Claude Code), "chatgpt" (Codex) or "gemini" (Antigravity CLI).
-    /// Each runs on the writer's own plan through its official command-line tool.
-    var deepCheckWith = "claude"
+    /// Who Deep check asks: "claude" (Claude Code), "chatgpt" (Codex), "gemini" (Antigravity CLI), or "auto",
+    /// the first of those that is signed in. Each runs on the writer's own plan through its official command-line
+    /// tool. New users start on "auto"; older settings files without this choice keep Claude.
+    var deepCheckWith = "auto"
     /// "fast" or "best"; "fable" is Claude only, for plans that include it. "custom" keeps a model name set by hand
-    /// in an older settings file until Speed is changed.
-    var deepCheckSpeed = "best"
+    /// in an older settings file until Speed is changed. New users start on Fast: a few seconds feels like a tool.
+    var deepCheckSpeed = "fast"
     /// The Claude Code model for the chosen speed.
     var claudeModel: String {
         switch deepCheckSpeed {
@@ -47,7 +48,28 @@ struct Config: Codable {
         }
     }
     /// Shown in menus and messages: "Claude", "ChatGPT" or "Gemini".
-    var deepCheckName: String { deepCheckWith == "chatgpt" ? "ChatGPT" : deepCheckWith == "gemini" ? "Gemini" : "Claude" }
+    var deepCheckName: String { Config.name(deepCheckWith) }
+    static func name(_ who: String) -> String { who == "chatgpt" ? "ChatGPT" : who == "gemini" ? "Gemini" : "Claude" }
+
+    /// The helper Deep check will use: the chosen one, or on "auto" the first signed in of Claude, ChatGPT, Gemini.
+    /// The sign-in checks start helper programs, so call this off the main thread.
+    nonisolated func resolvedDeepWith() -> String {
+        guard deepCheckWith == "auto" else { return deepCheckWith }
+        if case .connected = Helpers.claude(path: claudeExecutable) { return "claude" }
+        if case .connected = Helpers.codex() { return "chatgpt" }
+        if case .connected = Helpers.gemini() { return "gemini" }
+        return "claude"
+    }
+
+    /// Spelling for a new user, from the Mac's region: Canada, the US and the UK get their own; elsewhere any English.
+    static var regionSpelling: String {
+        switch Locale.current.region?.identifier {
+        case "CA": "en_CA"
+        case "US": "en_US"
+        case "GB": "en_GB"
+        default: ""
+        }
+    }
     /// Codex and the Antigravity CLI, wherever their installers put them.
     var codexExecutable: String? { Config.firstExecutable("codex") }
     var geminiExecutable: String? { Config.firstExecutable("agy") }
@@ -84,7 +106,7 @@ struct Config: Codable {
         officeApps = try c.decodeIfPresent([String].self, forKey: .officeApps) ?? d.officeApps
         claudePath = try c.decodeIfPresent(String.self, forKey: .claudePath) ?? d.claudePath
         deepCheckModel = try c.decodeIfPresent(String.self, forKey: .deepCheckModel) ?? d.deepCheckModel
-        deepCheckWith = try c.decodeIfPresent(String.self, forKey: .deepCheckWith) ?? d.deepCheckWith
+        deepCheckWith = try c.decodeIfPresent(String.self, forKey: .deepCheckWith) ?? "claude"
         // Files from before the Speed choice keep the model they had.
         deepCheckSpeed = try c.decodeIfPresent(String.self, forKey: .deepCheckSpeed)
             ?? (["sonnet": "fast", "fable": "fable", "opus": "best"][deepCheckModel] ?? "custom")
@@ -105,8 +127,11 @@ struct Config: Codable {
     static func load() -> Config {
         if let d = try? Data(contentsOf: url), let c = try? JSONDecoder().decode(Config.self, from: d) { return c }
         // Never overwrite a file that exists but failed to parse; a hand edit may have a typo.
-        let c = Config()
-        if !FileManager.default.fileExists(atPath: url.path) { c.save() }
+        var c = Config()
+        if !FileManager.default.fileExists(atPath: url.path) {
+            c.houseStyle.spelling = regionSpelling
+            c.save()
+        }
         return c
     }
 

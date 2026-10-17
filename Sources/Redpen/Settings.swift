@@ -383,7 +383,7 @@ struct AdvancedPage: View {
                 SectionLabel(text: "Deep check")
                 Group {
                     Choice(label: "Check with", sub: helperNote,
-                           options: [("Claude", "claude"), ("ChatGPT", "chatgpt"), ("Gemini", "gemini")], value: model.deepWith)
+                           options: [("Automatic", "auto"), ("Claude", "claude"), ("ChatGPT", "chatgpt"), ("Gemini", "gemini")], value: model.deepWith)
                     Row(label: "Speed", sub: speedNote) {
                         Picker("Speed", selection: model.deepSpeed) {
                             ForEach(speeds, id: \.1) { Text($0.0).tag($0.1) }
@@ -416,6 +416,10 @@ struct AdvancedPage: View {
 
     private var helperNote: String {
         let who = model.config.deepCheckWith
+        if who == "auto" {
+            let ready = ["claude", "chatgpt", "gemini"].first { if case .connected = model.helpers[$0] { true } else { false } }
+            return ready.map { "Uses \(Config.name($0)), the first one signed in" } ?? (model.helpers.isEmpty ? "Checking\u{2026}" : "Sign in to Claude, ChatGPT or Gemini first")
+        }
         switch model.helpers[who] {
         case .none, .some(.checking): return "Checking\u{2026}"
         case .some(.notSetUp(let how)): return how
@@ -432,6 +436,7 @@ struct AdvancedPage: View {
     private var speedNote: String {
         let fast = model.config.deepCheckSpeed == "fast"
         switch model.config.deepCheckWith {
+        case "auto": return fast ? "Quick answers, in a few seconds" : "Slower, more careful answers"
         case "chatgpt": return fast ? "Codex thinks briefly" : "Codex thinks it through, slower"
         case "gemini": return fast ? "Gemini thinks briefly" : "Gemini thinks it through, slower"
         default:

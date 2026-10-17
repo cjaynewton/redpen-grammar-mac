@@ -63,7 +63,7 @@ final class PanelModel: ObservableObject {
         let s = host.statusLine()
         status = s.text; live = s.live
         canDeepCheck = host.canDeepCheck
-        deepName = host.config.deepCheckName
+        if host.config.deepCheckWith != "auto" { deepName = host.config.deepCheckName }
         summary = PatternSummary(Mistakes.shared.all())
         if Date().timeIntervalSince(helpersCheckedAt) > 300 { checkHelpers(claudePath: host.config.claudeExecutable) }
     }
@@ -80,6 +80,11 @@ final class PanelModel: ObservableObject {
                 self.set("claude", claude)
                 self.set("chatgpt", codex)
                 self.set("gemini", gemini)
+                // On Automatic, the menu names the helper Deep check will actually use.
+                if self.host?.config.deepCheckWith == "auto" {
+                    self.deepName = [("claude", claude), ("chatgpt", codex), ("gemini", gemini)]
+                        .first { if case .connected = $0.1 { true } else { false } }.map { Config.name($0.0) } ?? "Claude"
+                }
             }
         }
     }
