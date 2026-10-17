@@ -30,15 +30,13 @@ Three engines, all local, combined so each covers the others' blind spots:
 
 ## How good is it?
 
-Measured with the test runner in this repo (see Development below):
+Redpen was tested three ways.
 
-| Test | Result |
-|---|---|
-| 100 short sentences with planted mistakes (spelling, grammar, confused words, 15 house-style) | 98 caught |
-| 35 correct sentences | 0 wrongly flagged |
-| 120 paragraphs of published, edited writing | 11 flagged (Grammarly's free checker flagged 35 of the same 120) |
+- **Does it catch mistakes?** We wrote 100 short sentences, each with one mistake: a misspelling, a grammar slip, a mixed-up word like *their* and *there*, or a broken style rule. Redpen caught 98.
+- **Does it leave good writing alone?** On 35 sentences with nothing wrong, it flagged none.
+- **Does it nag?** We ran it over 120 paragraphs of published writing that had already been edited, so almost anything flagged there is a false alarm. Redpen flagged 11. Grammarly's free version flagged 35 of the same paragraphs.
 
-The published-writing test isn't included because it uses someone's own articles. Bring your own: put one paragraph per line in a file as `clean<TAB>paragraph<TAB>` and run `swift run redpen-test --blind-file yourfile.tsv`. Any flag on edited writing is a likely false alarm.
+Fewer flags on finished writing means fewer interruptions while you work.
 
 ## Download
 
@@ -94,6 +92,8 @@ export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 swift run redpen-test          # built-in test sentences
 swift run redpen-test --blind  # also --held-out, --blind2, --blind-file <tsv>, --patterns
 ```
+
+To test Redpen on your own writing, put one finished paragraph per line in a file as `clean<TAB>paragraph<TAB>` and run `swift run redpen-test --blind-file yourfile.tsv`. Any flag on edited writing is likely a false alarm. The published-writing test above isn't included, because it uses someone's own articles.
 
 Code layout:
 
