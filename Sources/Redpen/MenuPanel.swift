@@ -134,9 +134,11 @@ enum Helpers {
         return run(path, ["login", "status"]).localizedCaseInsensitiveContains("logged in using chatgpt") ? .connected : .notSetUp("Sign in to Codex with ChatGPT")
     }
 
-    /// Google's Antigravity CLI keeps its sign-in to itself, so Redpen can only tell whether it is installed.
+    /// Google's Antigravity CLI has no sign-in status command, but listing its models asks you to sign in first.
+    /// That one asks Google's servers, so it runs in the background like the other checks.
     static func gemini() -> HelperRow.State {
-        Config.firstExecutable("agy") == nil ? .notSetUp("Install Google\u{2019}s Antigravity CLI to use your Google AI plan") : .connected
+        guard let path = Config.firstExecutable("agy") else { return .notSetUp("Install Google\u{2019}s Antigravity CLI to use your Google AI plan") }
+        return run(path, ["models"]).localizedCaseInsensitiveContains("sign in") ? .notSetUp("Sign in: open Terminal, run agy once") : .connected
     }
 
     /// Runs a helper with fixed arguments (never through a shell) and returns what it printed.
@@ -362,7 +364,7 @@ struct PanelView: View {
     private func stateText(_ h: HelperRow) -> some View {
         switch h.state {
         case .checking: return Text("Checking\u{2026}").foregroundStyle(.tertiary)
-        case .connected: return Text(h.id == "apple" ? "On this Mac" : h.id == "gemini" ? "Installed" : "Connected").foregroundStyle(.green)
+        case .connected: return Text(h.id == "apple" ? "On this Mac" : "Connected").foregroundStyle(.green)
         case .notSetUp: return Text("Not set up").foregroundStyle(.orange)
         case .off: return Text("Off on this Mac").foregroundStyle(.secondary)
         }

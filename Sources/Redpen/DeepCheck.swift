@@ -70,9 +70,10 @@ final class DeepCheck {
     /// loads; no flag skips it.
     ///
     /// The Antigravity CLI reads its prompt from the command line, so the text is appended there the way Codex
-    /// appends stdin. Headless runs refuse commands that would need approval, and file access is limited to the
-    /// empty folder. Commands the user has already allowed in their own Antigravity settings stay allowed; the CLI
-    /// has no flag to switch those off.
+    /// appends stdin. It runs in Antigravity's sandbox, which restricts terminal commands, with slash commands and
+    /// skills off. Headless runs refuse commands that would need approval, and file access is limited to the empty
+    /// folder. Commands the user has already allowed in their own Antigravity settings stay allowed, inside the
+    /// sandbox; the CLI has no flag to switch those off.
     nonisolated static func job(_ c: Config, prompt: String, input: String) -> Job {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("redpen-deep-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
@@ -91,6 +92,7 @@ final class DeepCheck {
             return Job(name: "Gemini", tool: "Antigravity CLI", path: c.geminiExecutable,
                        missing: "Deep check with Gemini needs Google\u{2019}s Antigravity CLI. Install it, run agy once and sign in with your Google account.",
                        args: ["-p", prompt + "\n\n<stdin>\n" + input + "\n</stdin>", "--output-format", "text",
+                              "--sandbox", "--disable-slash-commands",
                               "--effort", c.deepCheckSpeed == "fast" ? "low" : "high"],
                        input: nil, answerFile: nil, folder: folder)
         default:
