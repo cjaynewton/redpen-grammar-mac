@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Builds Redpen.app and installs it to ~/Applications.
+# Builds Redpen Grammar.app and installs it to ~/Applications.
 #
 # Optional, in a .local.env file next to this script (not committed):
 #   REDPEN_SIGN_ID="Apple Development"   # sign with your certificate so Accessibility survives rebuilds
@@ -21,7 +21,7 @@ fi
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 swift build -c release --product Redpen
 
-APP=build/Redpen.app
+APP="build/Redpen Grammar.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp .build/release/Redpen "$APP/Contents/MacOS/Redpen"
@@ -33,7 +33,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
-  <key>CFBundleName</key><string>Redpen</string>
+  <key>CFBundleName</key><string>Redpen Grammar</string>
   <key>CFBundleExecutable</key><string>Redpen</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.4</string>
@@ -53,12 +53,13 @@ if [[ "$SIGN_ID" == "-" ]]; then
   echo "Note: ad-hoc signed. macOS may ask you to allow Accessibility again after each rebuild."
 fi
 [[ -n "$REDPEN_SKIP_INSTALL" ]] && exit 0
-rm -rf ~/Applications/Redpen.app
+# Before Oct 17 2026 the app was called Redpen.app; remove that copy so only one is installed.
+rm -rf ~/Applications/Redpen.app ~/Applications/"Redpen Grammar.app"
 mkdir -p ~/Applications
-cp -R "$APP" ~/Applications/Redpen.app
-echo "Installed ~/Applications/Redpen.app"
+cp -R "$APP" ~/Applications/"Redpen Grammar.app"
+echo "Installed ~/Applications/Redpen Grammar.app"
 # A running copy keeps the old code until it restarts, so restart it.
 if pgrep -x Redpen >/dev/null; then
-  pkill -x Redpen; sleep 1; open ~/Applications/Redpen.app
+  pkill -x Redpen; sleep 1; open ~/Applications/"Redpen Grammar.app"
   echo "Restarted Redpen with the new build"
 fi

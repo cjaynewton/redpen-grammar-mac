@@ -153,7 +153,7 @@ final class DeepCheck {
         if window == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 560),
                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-            w.title = "Redpen \u{00B7} Deep check"
+            w.title = "Redpen Grammar \u{00B7} Deep check"
             w.isReleasedWhenClosed = false
             let picker = NSSegmentedControl(labels: ["Fix only", "Email"], trackingMode: .selectOne,
                                             target: self, action: #selector(modeChanged(_:)))

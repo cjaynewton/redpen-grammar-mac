@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Builds the download version of Redpen: a signed, notarized Redpen.dmg that opens on any Mac with macOS 26,
+# Builds the download version of Redpen Grammar: a signed, notarized Redpen-Grammar.dmg that opens on any Mac with macOS 26,
 # no Xcode or Homebrew needed. For maintainers; users of the source code run ./install.sh instead.
 #
 # Needs, once:
@@ -21,18 +21,18 @@ if ! xcrun notarytool history --keychain-profile redpen >/dev/null 2>&1; then
 fi
 
 REDPEN_SIGN_ID="$ID" REDPEN_SKIP_INSTALL=1 ./build.sh
-VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" build/Redpen.app/Contents/Info.plist)
+VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "build/Redpen Grammar.app/Contents/Info.plist")
 STAGE=build/dmg
-rm -rf "$STAGE" "build/Redpen-$VERSION.dmg"
+rm -rf "$STAGE" "build/Redpen-Grammar-$VERSION.dmg"
 mkdir -p "$STAGE"
-cp -R build/Redpen.app "$STAGE/"
+cp -R "build/Redpen Grammar.app" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
-hdiutil create -volname "Redpen" -srcfolder "$STAGE" -format UDZO "build/Redpen-$VERSION.dmg" >/dev/null
-codesign --force --timestamp --sign "$ID" "build/Redpen-$VERSION.dmg"
+hdiutil create -volname "Redpen Grammar" -srcfolder "$STAGE" -format UDZO "build/Redpen-Grammar-$VERSION.dmg" >/dev/null
+codesign --force --timestamp --sign "$ID" "build/Redpen-Grammar-$VERSION.dmg"
 
 echo "Sending to Apple's notary service (a few minutes)..."
-xcrun notarytool submit "build/Redpen-$VERSION.dmg" --keychain-profile redpen --wait
-xcrun stapler staple "build/Redpen-$VERSION.dmg"
-spctl --assess --type open --context context:primary-signature -v "build/Redpen-$VERSION.dmg"
-echo "Ready: build/Redpen-$VERSION.dmg"
-echo "Publish it as a GitHub release: gh release create v$VERSION build/Redpen-$VERSION.dmg"
+xcrun notarytool submit "build/Redpen-Grammar-$VERSION.dmg" --keychain-profile redpen --wait
+xcrun stapler staple "build/Redpen-Grammar-$VERSION.dmg"
+spctl --assess --type open --context context:primary-signature -v "build/Redpen-Grammar-$VERSION.dmg"
+echo "Ready: build/Redpen-Grammar-$VERSION.dmg"
+echo "Publish it as a GitHub release: gh release create v$VERSION build/Redpen-Grammar-$VERSION.dmg"

@@ -33,7 +33,7 @@ final class WelcomeWindow: NSObject {
     private func build() {
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 500, height: 420),
                          styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        w.title = "Welcome to Redpen"
+        w.title = "Welcome to Redpen Grammar"
         w.isReleasedWhenClosed = false
         let stack = NSStackView()
         stack.orientation = .vertical
@@ -44,7 +44,7 @@ final class WelcomeWindow: NSObject {
         stack.addArrangedSubview(label("Redpen checks your writing in any app", size: 18, weight: .semibold))
         stack.addArrangedSubview(label("Spelling mistakes get a red underline, grammar a blue one. Click an underline to fix it and see why. Everything runs on this Mac."))
         stack.addArrangedSubview(label("One permission is needed", size: 14, weight: .semibold))
-        stack.addArrangedSubview(label("To read what you type, macOS asks you to allow Redpen under Accessibility once.\n1. Click the button below.\n2. Turn on the switch next to Redpen. If Redpen is not listed, click + and choose Redpen in Applications.\n3. Come back here. This window updates by itself."))
+        stack.addArrangedSubview(label("To read what you type, macOS asks you to allow Redpen under Accessibility once.\n1. Click the button below.\n2. Turn on the switch next to Redpen Grammar. If it is not listed, click + and choose Redpen Grammar in Applications.\n3. Come back here. This window updates by itself."))
         let open = NSButton(title: "Open Accessibility settings", target: self, action: #selector(openSettings))
         open.bezelStyle = .push
         open.keyEquivalent = "\r"

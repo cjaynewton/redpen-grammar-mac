@@ -14,5 +14,5 @@ fi
 # Starts now and at every login.
 brew services start languagetool >/dev/null
 ./build.sh
-open ~/Applications/Redpen.app
+open ~/Applications/"Redpen Grammar.app"
 echo "Redpen is running: look for the pencil in the menu bar."

@@ -1,6 +1,6 @@
-# Redpen for Mac
+# Redpen Grammar for Mac
 
-A free, private writing checker for macOS. It underlines mistakes as you type in almost any app (Mail, Notes, Word, Chrome, Slack, even Terminal), and each fix explains the rule so you make the mistake less often.
+A free, private writing checker for macOS, from the Redpen family of writing tools. It underlines mistakes as you type in almost any app (Mail, Notes, Word, Chrome, Slack, even Terminal), and each fix explains the rule so you make the mistake less often.
 
 Everything runs on your Mac. Your writing is never sent anywhere unless you choose **Deep check**.
 
@@ -40,19 +40,19 @@ Fewer flags on finished writing means fewer interruptions while you work.
 
 ## Download
 
-**[Download the latest Redpen](https://github.com/cjaynewton/redpen-mac/releases/latest)** (the `.dmg` file), open it, and drag Redpen into Applications. It's signed and notarized by Apple, and needs **macOS 26 or later**. No Xcode or Homebrew is needed. The first time it opens, a welcome window walks you through the one permission macOS needs, then click **Turn on** next to **Full grammar** in the Redpen menu for the grammar engine.
+**[Download the latest Redpen Grammar](https://github.com/cjaynewton/redpen-grammar-mac/releases/latest)** (the `.dmg` file), open it, and drag Redpen Grammar into Applications. If you have an older copy called Redpen, delete it. It's signed and notarized by Apple, and needs **macOS 26 or later**. No Xcode or Homebrew is needed. The first time it opens, a welcome window walks you through the one permission macOS needs, then click **Turn on** next to **Full grammar** in the Redpen menu for the grammar engine.
 
 ## Build from source
 
 You need **macOS 26 or later**, **Xcode** (free, from the Mac App Store; open it once after installing), and **[Homebrew](https://brew.sh)** for the grammar engine. **Apple Intelligence** turned on is recommended: without it Redpen still runs, minus the confused-word and meaning checks.
 
 ```sh
-git clone https://github.com/cjaynewton/redpen-mac.git
-cd redpen-mac
+git clone https://github.com/cjaynewton/redpen-grammar-mac.git
+cd redpen-grammar-mac
 ./install.sh
 ```
 
-`install.sh` installs LanguageTool with Homebrew, starts it (and at every login), builds Redpen into `~/Applications`, and opens it. A welcome window walks you through the one permission macOS needs (**Accessibility**, so Redpen can read what you type).
+`install.sh` installs LanguageTool with Homebrew, starts it (and at every login), builds Redpen Grammar into `~/Applications`, and opens it. A welcome window walks you through the one permission macOS needs (**Accessibility**, so Redpen can read what you type).
 
 No Homebrew? Run `./build.sh` instead, then click **Turn on** next to **Full grammar** in the Redpen menu. Redpen downloads LanguageTool and a Java runtime (about 300 MB) into `~/Library/Application Support/Redpen/engine` and runs it itself while Redpen is open. Until then, spelling and basic grammar still work.
 

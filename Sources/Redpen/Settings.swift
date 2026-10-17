@@ -350,7 +350,7 @@ struct AdvancedTab: View {
                 }
             }
             HStack {
-                Text("Redpen \(version)").foregroundStyle(.tertiary)
+                Text("Redpen Grammar \(version)").foregroundStyle(.tertiary)
                 Spacer()
                 Button("Open settings file") { NSWorkspace.shared.open(Config.url) }.buttonStyle(.link)
                 Button("Reload") { model.config = Config.load() }.buttonStyle(.link)
