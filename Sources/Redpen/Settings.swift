@@ -135,5 +135,7 @@ final class SettingsWindow {
         window?.setContentSize(Self.size)
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
+        // Nothing focused on open: the Mac would otherwise select a whole word list, and one keystroke replaces it.
+        DispatchQueue.main.async { [weak self] in self?.window?.makeFirstResponder(nil) }
     }
 }
