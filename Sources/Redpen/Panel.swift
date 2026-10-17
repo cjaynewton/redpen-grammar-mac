@@ -55,6 +55,9 @@ final class SuggestionPanel: NSObject {
         var fixAll: (count: Int, choice: Choice)? = nil
         /// Opens the next (1) or previous (-1) mistake, or the one now at this spot (0) after a fix.
         var onStep: ((Int) -> Void)? = nil
+        /// Whether Return, Esc and Tab may go to the card. Off for the Terminal card, which opens while you type,
+        /// so Return still runs your command.
+        var takesKeys = true
     }
 
     /// "roomy", "sentence" or "keyboard", from the settings.
@@ -112,7 +115,7 @@ final class SuggestionPanel: NSObject {
         panel.setFrame(NSRect(origin: origin, size: size), display: true)
         panel.invalidateShadow()
         panel.orderFrontRegardless()
-        if style == "keyboard" { installKeys() } else { removeKeys() }
+        if style == "keyboard" && card.takesKeys { installKeys() } else { removeKeys() }
 
         if outsideMonitor == nil {
             // Left clicks are the watcher's call (a click on the same word keeps the card, on another word

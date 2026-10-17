@@ -140,6 +140,7 @@ final class TerminalMode {
             for k in keys { self?.watcher.ignored.insert(k) }
         }
         card.title = issues.count == 1 ? "One mistake in what you typed" : "\(issues.count) mistakes in what you typed"
+        card.takesKeys = false
         watcher.panel.style = watcher.config.cardStyle
         watcher.panel.show(card, below: anchor())
     }
