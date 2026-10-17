@@ -286,9 +286,11 @@ final class Watcher {
     }
 
     /// All current issues with absolute ranges, minus ignored ones and the word still being typed.
-    /// `freshOnly`: leave out LanguageTool results checked on older text, for choosing the next card after a fix.
-    private func currentIssues(_ el: AXUIElement, _ text: String, freshOnly: Bool = false) -> [Issue] {
-        let lt = freshOnly && ltKey != ltSlice(el, text).key ? [] : ltIssues
+    /// LanguageTool results count only for the exact text they were checked on. A grammar fix from older text can
+    /// still match the same word in new text ("He are" edited to "We are" keeps "are"), so after any edit its
+    /// underlines wait for the fresh check instead of offering advice that may no longer fit.
+    private func currentIssues(_ el: AXUIElement, _ text: String) -> [Issue] {
+        let lt = ltKey == ltSlice(el, text).key ? ltIssues : []
         let ns = text as NSString
         var model: [Issue] = []
         let w = ns.paragraphRange(for: window(el, text))
@@ -417,7 +419,13 @@ final class Watcher {
         showPanel(issue, el, anchor)
     }
 
-    private func showPanel(_ issue: Issue, _ el: AXUIElement, _ anchor: CGRect) {
+    private func showPanel(_ incoming: Issue, _ el: AXUIElement, _ anchor: CGRect) {
+        let all = currentIssues(el, lastText).sorted { $0.range.location < $1.range.location }
+        // Build the card from the issue as it stands now, so its suggestions are never from older text.
+        guard let issue = all.first(where: { $0.range == incoming.range && $0.original == incoming.original && $0.kind == incoming.kind })
+                .map({ fresh -> Issue in var f = fresh; if f.replacements.isEmpty { f.replacements = incoming.replacements }; return f }) else {
+            Log.note("card: \u{201C}\(incoming.original)\u{201D} is no longer a mistake"); return
+        }
         let reps = issue.replacements.prefix(3).map { $0 }
         func shown(_ rep: String) -> String {
             let t = rep.trimmingCharacters(in: .whitespaces)
@@ -446,12 +454,6 @@ final class Watcher {
             footer.append(.init(title: "Add to dictionary") { [weak self] in
                 Spelling.learn(issue.original); self?.lastQuickAt = .distantPast
             })
-        }
-        // Fresh results only: a grammar fix checked on older text can still match the same word in new text
-        // ("He are" edited to "We are" keeps "are"), so it must not open or count toward Fix all.
-        let all = currentIssues(el, lastText, freshOnly: true).sorted { $0.range.location < $1.range.location }
-        guard all.contains(where: { $0.range == issue.range && $0.original == issue.original && $0.kind == issue.kind }) else {
-            Log.note("card: \u{201C}\(issue.original)\u{201D} was checked on older text, waiting for a fresh check"); return
         }
         // More than one sure mistake in this paragraph: offer to fix them all at once.
         let paraRange = (lastText as NSString).paragraphRange(for: NSRange(location: min(issue.range.location, (lastText as NSString).length), length: 0))
@@ -531,7 +533,7 @@ final class Watcher {
             } else { Log.note(fixIn ? "next mistake: gave up waiting for the check" : "next mistake: the fix never appeared, staying put") }
             return
         }
-        let all = currentIssues(el, lastText, freshOnly: true).sorted { $0.range.location < $1.range.location }
+        let all = currentIssues(el, lastText).sorted { $0.range.location < $1.range.location }
         guard let firstIssue = all.first, let lastIssue = all.last else { return }
         let at = issue.range.location
         let pick: Issue
@@ -575,7 +577,7 @@ final class Watcher {
     /// get a pause between fixes so one paste never runs into the next.
     func fixAll(in range: NSRange, _ el: AXUIElement) {
         guard !fixAllRunning, let text: String = AX.attr(el, kAXValueAttribute),
-              let result = Engine.fixAll(currentIssues(el, text, freshOnly: true), in: range, of: text) else { NSSound.beep(); return }
+              let result = Engine.fixAll(currentIssues(el, text), in: range, of: text) else { NSSound.beep(); return }
         panel.hide()
         let app = NSWorkspace.shared.frontmostApplication?.processIdentifier
         Log.note("fix all: \(result.fixed.count) in \(bundleID)")
