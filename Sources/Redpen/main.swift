@@ -11,7 +11,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
     private let deep = DeepCheck()
     private var panel: MenuPanel!
     private let welcome = WelcomeWindow()
-    private let settings = SettingsWindow()
     private var lastDeepText: String?
     private var hotKey: HotKey?
     private var fixAllKey: HotKey?
@@ -24,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
             exit(0)
         }
         if let i = CommandLine.arguments.firstIndex(of: "--render-settings"), i + 1 < CommandLine.arguments.count {
-            SettingsWindow.render(config: watcher.config, to: CommandLine.arguments[i + 1])
+            MenuPanel.render(host: self, to: CommandLine.arguments[i + 1], pages: [.settings, .fixBox, .advanced])
             exit(0)
         }
         if let i = CommandLine.arguments.firstIndex(of: "--render-card"), i + 1 < CommandLine.arguments.count {
@@ -150,7 +149,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
     }
     func statusLine() -> (text: String, live: Bool) { watcher.statusLine() }
     var canDeepCheck: Bool { lastDeepText != nil }
-    func openSettings() { showSettings() }
     func allowAccessibility() { showWelcome() }
     /// Waits for the app you were typing in to take focus back, then opens the card at its cursor.
     func fixAllAtCursor() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.watcher.fixAllAtCursor() } }
@@ -161,12 +159,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
         deep.run(text: t, config: watcher.config)
     }
 
-    @objc func showSettings() {
-        settings.show(config: watcher.config) { [weak self] c in
-            self?.watcher.config = c
-            if !c.enabled { self?.watcher.clear() }
-        }
-    }
     @objc func showWelcome() { welcome.show() }
 
     @objc func openAccessibilitySettings() {

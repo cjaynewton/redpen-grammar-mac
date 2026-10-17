@@ -11,7 +11,6 @@ protocol PanelHost: AnyObject {
     func fixAllAtCursor()
     func deepCheck()
     var canDeepCheck: Bool { get }
-    func openSettings()
     func allowAccessibility()
 }
 
@@ -29,13 +28,13 @@ struct HelperRow: Identifiable, Equatable {
 final class PanelModel: ObservableObject {
     weak var host: PanelHost?
     @Published var enabled = true { didSet { guard enabled != oldValue else { return }; host?.config.enabled = enabled; host?.config.save() } }
-    @Published var calm = true { didSet { guard calm != oldValue else { return }; host?.config.calm = calm; host?.config.save() } }
-    @Published var cardLook = "light" {
-        didSet { guard cardLook != oldValue else { return }; host?.config.cardAppearance = cardLook; host?.config.save(); onLookChange?(cardLook) }
-    }
-    @Published var cardStyle = "roomy" {
-        didSet { guard cardStyle != oldValue else { return }; host?.config.cardStyle = cardStyle; host?.config.save() }
-    }
+    /// Which page the panel shows. Settings slides in place of the menu instead of opening a window.
+    enum Page { case main, settings, fixBox, advanced }
+    @Published private(set) var page = Page.main { didSet { if page != oldValue { DispatchQueue.main.async { self.onLayoutChange?() } } } }
+    /// The settings being edited, made fresh each time Settings opens so it starts from the saved file.
+    @Published private(set) var settings: SettingsModel?
+    /// Set while drawing pages to PNG files: long pages draw in full instead of scrolling.
+    var rendering = false
     var onLookChange: ((String) -> Void)?
     var onLayoutChange: (() -> Void)?
     @Published var status = ""
@@ -58,9 +57,6 @@ final class PanelModel: ObservableObject {
         guard let host else { return }
         trusted = AXIsProcessTrusted()
         enabled = host.config.enabled
-        cardLook = host.config.cardAppearance
-        cardStyle = host.config.cardStyle
-        calm = host.config.calm
         let s = host.statusLine()
         status = s.text; live = s.live
         canDeepCheck = host.canDeepCheck
@@ -84,6 +80,35 @@ final class PanelModel: ObservableObject {
             }
         }
     }
+
+    /// Slides to a page. Opening Settings from the menu reads the saved settings first; back on the menu, the
+    /// menu's own lines are refreshed from what Settings changed.
+    func go(_ to: Page) {
+        guard let host else { return }
+        if to == .settings, page == .main {
+            settings = SettingsModel(config: host.config) { [weak self] c in
+                let look = self?.host?.config.cardAppearance
+                self?.host?.config = c
+                if c.cardAppearance != look { self?.onLookChange?(c.cardAppearance) }
+            }
+        }
+        let forward = to != .main && (page == .main || (page == .settings && to != .settings))
+        withAnimation(.easeOut(duration: 0.2)) { direction = forward ? .trailing : .leading; page = to }
+        if to == .main { settings = nil; refresh() }
+    }
+
+    /// Esc on a page goes back one step; on the menu it closes the panel.
+    func back() -> Bool {
+        switch page {
+        case .main: return false
+        case .settings: go(.main)
+        case .fixBox, .advanced: go(.settings)
+        }
+        return true
+    }
+
+    /// The edge the next page slides in from.
+    @Published var direction: Edge = .trailing
 
     func set(_ id: String, _ state: HelperRow.State) {
         if let i = helpers.firstIndex(where: { $0.id == id }) { helpers[i].state = state }
@@ -170,20 +195,31 @@ struct PanelView: View {
     private static let blue = Color(red: 0.16, green: 0.44, blue: 0.86)
 
     var body: some View {
+        ZStack(alignment: .top) {
+            switch model.page {
+            case .main: menu.transition(.push(from: model.direction))
+            case .settings: model.settings.map { SettingsPage(model: $0, panel: model).transition(.push(from: model.direction)) }
+            case .fixBox: model.settings.map { FixBoxPage(model: $0, panel: model).transition(.push(from: model.direction)) }
+            case .advanced: model.settings.map { AdvancedPage(model: $0, panel: model).transition(.push(from: model.direction)) }
+            }
+        }
+        .clipped()
+        .font(.system(size: 14))
+        // Solid paper, not the system's see-through glass: the page behind made the panel hard to read.
+        .background(scheme == .dark ? Color(red: 0.14, green: 0.145, blue: 0.16) : Color(red: 0.98, green: 0.98, blue: 0.973))
+    }
+
+    private var menu: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
             if !model.trusted { permission }
             group { actions }
             group { patterns }
             group { helpers }
-            group { VStack(spacing: 12) { underlineChoice; cardStyle; cardLook } }
             footer
         }
         .padding(16)
         .frame(width: 400)
-        .font(.system(size: 14))
-        // Solid paper, not the system's see-through glass: the page behind made the panel hard to read.
-        .background(scheme == .dark ? Color(red: 0.14, green: 0.145, blue: 0.16) : Color(red: 0.98, green: 0.98, blue: 0.973))
     }
 
     private func group<C: View>(@ViewBuilder _ content: () -> C) -> some View {
@@ -327,52 +363,12 @@ struct PanelView: View {
         }
     }
 
-    @ViewBuilder private var underlineChoice: some View {
-        HStack {
-            Text("Underline")
-            Spacer()
-            Picker("Underline", selection: $model.calm) {
-                Text("Mistakes only").tag(true)
-                Text("Mistakes and tips").tag(false)
-            }
-            .pickerStyle(.segmented).labelsHidden().fixedSize()
-            .help("Mistakes only: sure spelling and grammar mistakes, in red. Mistakes and tips: also your style rules and Apple\u{2019}s maybes, in purple.")
-        }
-    }
-
-    @ViewBuilder private var cardStyle: some View {
-        HStack {
-            Text("Fix box")
-            Spacer()
-            Picker("Fix box", selection: $model.cardStyle) {
-                Text("Simple").tag("roomy")
-                Text("Sentence").tag("sentence")
-                Text("Keyboard").tag("keyboard")
-            }
-            .pickerStyle(.segmented).labelsHidden().fixedSize()
-            .help("Simple: the fix large, with the lesson. Sentence: the whole sentence with the fix in place. Keyboard: Return accepts, Esc skips, Tab moves to the next mistake.")
-        }
-    }
-
-    @ViewBuilder private var cardLook: some View {
-        HStack {
-            Text("Colour")
-            Spacer()
-            Picker("Box colour", selection: $model.cardLook) {
-                Text("Light").tag("light")
-                Text("Dark").tag("dark")
-                Text("Match Mac").tag("system")
-            }
-            .pickerStyle(.segmented).labelsHidden().fixedSize()
-        }
-    }
-
     private var footer: some View {
         HStack {
             Text("Redpen \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")")
                 .font(.system(size: 13)).foregroundStyle(.tertiary)
             Spacer()
-            Button("Settings\u{2026}") { close(); model.host?.openSettings() }
+            Button("Settings") { model.go(.settings) }
             Button("Quit") { NSApp.terminate(nil) }
         }
         .padding(.horizontal, 4)
@@ -436,7 +432,10 @@ final class MenuPanel: NSObject, NSWindowDelegate {
             MainActor.assumeIsolated { self?.close() }
         }
         escapeKey = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
-            if e.keyCode == 53 { MainActor.assumeIsolated { self?.close() }; return nil }
+            if e.keyCode == 53 {
+                MainActor.assumeIsolated { if self?.model.back() != true { self?.close() } }
+                return nil
+            }
             return e
         }
     }
@@ -468,6 +467,7 @@ final class MenuPanel: NSObject, NSWindowDelegate {
         if let m = outsideClicks { NSEvent.removeMonitor(m); outsideClicks = nil }
         if let m = escapeKey { NSEvent.removeMonitor(m); escapeKey = nil }
         model.showAll = false
+        if model.page != .main { model.go(.main) }
         previous?.activate()
     }
 
@@ -476,10 +476,18 @@ final class MenuPanel: NSObject, NSWindowDelegate {
     }
 
     /// Draws the panel into PNG files without showing it, so its layout can be checked from the command line.
-    static func render(host: PanelHost, to prefix: String) {
+    /// The menu goes to `prefix-light.png` and `prefix-dark.png`; other pages to `prefix-settings-light.png` and so on.
+    static func render(host: PanelHost, to prefix: String, pages: [PanelModel.Page] = [.main]) {
+        for page in pages { render(host: host, to: page == .main ? prefix : "\(prefix)-\(page)", page: page) }
+    }
+
+    private static func render(host: PanelHost, to prefix: String, page: PanelModel.Page) {
         let model = PanelModel()
         model.host = host
+        model.rendering = true
         model.refresh()
+        if page != .main { model.go(.settings) }
+        if page == .fixBox || page == .advanced { model.go(page) }
         model.set("claude", Helpers.claude(path: host.config.claudeExecutable))
         model.set("chatgpt", Helpers.codex())
         model.set("gemini", Helpers.gemini())
