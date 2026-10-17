@@ -427,8 +427,15 @@ final class Watcher {
         let keyboard = config.cardStyle == "keyboard"
         func fixing(_ rep: String) -> () -> Void {
             { [weak self] in
-                guard let self, self.apply(issue, rep, in: el) != nil else { return }
-                if keyboard { self.step(from: issue, 0, in: el, landed: rep) }
+                guard let self else { return }
+                // What the field should read once the fix is in, to confirm a paste that is only sent.
+                let before: String? = AX.attr(el, kAXValueAttribute)
+                guard self.apply(issue, rep, in: el) != nil else { return }
+                let expected = before.flatMap { b -> String? in
+                    let ns = b as NSString
+                    return NSMaxRange(issue.range) <= ns.length ? ns.replacingCharacters(in: issue.range, with: rep) : nil
+                }
+                if keyboard, let expected { self.step(from: issue, 0, in: el, expecting: expected) }
             }
         }
         func use(_ rep: String) -> SuggestionPanel.Choice {
@@ -440,7 +447,12 @@ final class Watcher {
                 Spelling.learn(issue.original); self?.lastQuickAt = .distantPast
             })
         }
-        let all = currentIssues(el, lastText).sorted { $0.range.location < $1.range.location }
+        // Fresh results only: a grammar fix checked on older text can still match the same word in new text
+        // ("He are" edited to "We are" keeps "are"), so it must not open or count toward Fix all.
+        let all = currentIssues(el, lastText, freshOnly: true).sorted { $0.range.location < $1.range.location }
+        guard all.contains(where: { $0.range == issue.range && $0.original == issue.original && $0.kind == issue.kind }) else {
+            Log.note("card: \u{201C}\(issue.original)\u{201D} was checked on older text, waiting for a fresh check"); return
+        }
         // More than one sure mistake in this paragraph: offer to fix them all at once.
         let paraRange = (lastText as NSString).paragraphRange(for: NSRange(location: min(issue.range.location, (lastText as NSString).length), length: 0))
         var fixAll: (count: Int, choice: SuggestionPanel.Choice)?
@@ -495,34 +507,26 @@ final class Watcher {
     /// Keyboard card: opens the next (1) or previous (-1) mistake, or after a fix or skip (0) the first one from
     /// that spot on. Only ever in the field the card was opened in: switching fields or apps cancels it, and after a
     /// fix it waits until the new text has been checked, so it never opens on positions from before the fix.
-    /// `landed`: the fix just made. A paste is only sent, not confirmed, so the next card waits until the fix is
-    /// really in the text and stops if it never appears.
-    private func step(from issue: Issue, _ dir: Int, in target: AXUIElement, landed: String? = nil) {
+    /// `expecting`: the whole text as it should read after the fix just made. A paste is only sent, not confirmed,
+    /// so the next card waits until the field reads exactly that, and stays put if it never does.
+    private func step(from issue: Issue, _ dir: Int, in target: AXUIElement, expecting: String? = nil) {
         let ticket = navGen
         let started = Date()
         DispatchQueue.main.asyncAfter(deadline: .now() + (dir == 0 ? 0.3 : 0)) { [weak self] in
-            self?.tryStep(from: issue, dir, in: target, ticket: ticket, started: started, landed: landed)
+            self?.tryStep(from: issue, dir, in: target, ticket: ticket, started: started, expecting: expecting)
         }
     }
 
-    private func tryStep(from issue: Issue, _ dir: Int, in target: AXUIElement, ticket: Int, started: Date, landed: String?) {
+    private func tryStep(from issue: Issue, _ dir: Int, in target: AXUIElement, ticket: Int, started: Date, expecting: String?) {
         guard ticket == navGen, let el = element, CFEqual(el, target), stillFocused(target) else {
             Log.note("next mistake: cancelled, the field changed"); return
         }
         let live: String? = AX.attr(el, kAXValueAttribute)
-        let ns = (live ?? "") as NSString
-        func at(_ len: Int) -> String? {
-            let r = NSRange(location: issue.range.location, length: len)
-            return NSMaxRange(r) <= ns.length ? ns.substring(with: r) : nil
-        }
-        // The fix is in when its words now sit where the mistake was; for a deletion, when the words are gone.
-        let fixIn = landed.map { fix in
-            fix.isEmpty ? at(issue.range.length) != issue.original : at((fix as NSString).length) == fix
-        } ?? true
+        let fixIn = expecting.map { live == $0 } ?? true
         guard fixIn, live == lastText, !lastText.isEmpty, checked(el, lastText) else {
             if Date().timeIntervalSince(started) < 3 {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                    self?.tryStep(from: issue, dir, in: target, ticket: ticket, started: started, landed: landed)
+                    self?.tryStep(from: issue, dir, in: target, ticket: ticket, started: started, expecting: expecting)
                 }
             } else { Log.note(fixIn ? "next mistake: gave up waiting for the check" : "next mistake: the fix never appeared, staying put") }
             return
@@ -571,7 +575,7 @@ final class Watcher {
     /// get a pause between fixes so one paste never runs into the next.
     func fixAll(in range: NSRange, _ el: AXUIElement) {
         guard !fixAllRunning, let text: String = AX.attr(el, kAXValueAttribute),
-              let result = Engine.fixAll(currentIssues(el, text), in: range, of: text) else { NSSound.beep(); return }
+              let result = Engine.fixAll(currentIssues(el, text, freshOnly: true), in: range, of: text) else { NSSound.beep(); return }
         panel.hide()
         let app = NSWorkspace.shared.frontmostApplication?.processIdentifier
         Log.note("fix all: \(result.fixed.count) in \(bundleID)")
