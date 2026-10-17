@@ -244,7 +244,7 @@ struct SettingsPage: View {
                 HStack {
                     Text("Changes save as you make them").foregroundStyle(.tertiary)
                     Spacer()
-                    Button("Open settings file") { NSWorkspace.shared.open(Config.url) }.buttonStyle(.link)
+                    Button("Open settings file") { panel.leave(); NSWorkspace.shared.open(Config.url) }.buttonStyle(.link)
                 }
                 .font(.system(size: 13)).padding(.horizontal, 4)
             }
@@ -310,6 +310,7 @@ struct FixBoxPage: View {
     static func name(_ style: String) -> String { styles.first { $0.id == style }?.name ?? styles[0].name }
 
     var body: some View {
+        Scrolling(full: panel.rendering) {
         VStack(alignment: .leading, spacing: 14) {
             NavHead(back: "Settings", title: "When you click a mistake") { panel.go(.settings) }
             Group {
@@ -348,6 +349,7 @@ struct FixBoxPage: View {
             .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
         }
         .padding(16)
+        }
         .frame(width: 500)
     }
 }

@@ -36,6 +36,9 @@ final class PanelModel: ObservableObject {
     /// Set while drawing pages to PNG files: long pages draw in full instead of scrolling.
     var rendering = false
     var onLookChange: ((String) -> Void)?
+    /// Closes the panel without handing focus back to the app you were writing in, for actions that open another app.
+    var onLeave: (() -> Void)?
+    func leave() { onLeave?() }
     var onLayoutChange: (() -> Void)?
     @Published var status = ""
     @Published var live = false
@@ -90,6 +93,8 @@ final class PanelModel: ObservableObject {
                 let look = self?.host?.config.cardAppearance
                 self?.host?.config = c
                 if c.cardAppearance != look { self?.onLookChange?(c.cardAppearance) }
+                // A different fix box changes the preview's size, so the panel is measured and placed again.
+                DispatchQueue.main.async { self?.onLayoutChange?() }
             }
         }
         let forward = to != .main && (page == .main || (page == .settings && to != .settings))
@@ -414,12 +419,13 @@ final class MenuPanel: NSObject, NSWindowDelegate {
         window.delegate = self
         model.onLookChange = { [weak self] look in self?.applyLook(look) }
         model.onLayoutChange = { [weak self] in self?.place() }
+        model.onLeave = { [weak self] in self?.close("opened another app", restoreFocus: false) }
     }
 
     var isShown: Bool { window.isVisible }
 
     func toggle(from button: NSStatusBarButton) {
-        if window.isVisible { close(); return }
+        if window.isVisible { close("pencil clicked"); return }
         self.button = button
         let front = NSWorkspace.shared.frontmostApplication
         previous = front?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? previous : front
@@ -429,11 +435,11 @@ final class MenuPanel: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         outsideClicks = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            MainActor.assumeIsolated { self?.close() }
+            MainActor.assumeIsolated { self?.close("click outside") }
         }
         escapeKey = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
             if e.keyCode == 53 {
-                MainActor.assumeIsolated { if self?.model.back() != true { self?.close() } }
+                MainActor.assumeIsolated { if self?.model.back() != true { self?.close("Esc") } }
                 return nil
             }
             return e
@@ -453,6 +459,7 @@ final class MenuPanel: NSObject, NSWindowDelegate {
         var top = min(b.minY - 6, vf.maxY - 6)
         if top - size.height < vf.minY + 6 { top = min(vf.maxY - 6, vf.minY + 6 + size.height) }
         window.setFrame(NSRect(x: x, y: top - size.height, width: size.width, height: size.height), display: true)
+        Log.note("menu panel \(model.page) at \(Int(x)),\(Int(top - size.height)) size \(Int(size.width))x\(Int(size.height))")
     }
 
     private func applyLook(_ look: String) {
@@ -461,18 +468,19 @@ final class MenuPanel: NSObject, NSWindowDelegate {
         hosting.appearance = a
     }
 
-    func close() {
+    func close(_ why: String = "closed", restoreFocus: Bool = true) {
         guard window.isVisible else { return }
+        Log.note("menu panel closed: \(why), on \(model.page)")
         window.orderOut(nil)
         if let m = outsideClicks { NSEvent.removeMonitor(m); outsideClicks = nil }
         if let m = escapeKey { NSEvent.removeMonitor(m); escapeKey = nil }
         model.showAll = false
         if model.page != .main { model.go(.main) }
-        previous?.activate()
+        if restoreFocus { previous?.activate() }
     }
 
     nonisolated func windowDidResignKey(_ notification: Notification) {
-        MainActor.assumeIsolated { close() }
+        MainActor.assumeIsolated { close("lost focus") }
     }
 
     /// Draws the panel into PNG files without showing it, so its layout can be checked from the command line.
