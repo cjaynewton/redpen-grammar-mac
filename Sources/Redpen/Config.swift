@@ -29,7 +29,33 @@ struct Config: Codable {
         return ([claudePath, home + "/.local/bin/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude", home + "/.claude/local/claude"])
             .first { FileManager.default.isExecutableFile(atPath: $0) } ?? claudePath
     }
+    /// The model name passed to Claude Code. Set from `deepCheckSpeed`; kept so older files still load.
     var deepCheckModel = "opus"
+    /// Who Deep check asks: "claude" (Claude Code), "chatgpt" (Codex) or "gemini" (Antigravity CLI).
+    /// Each runs on the writer's own plan through its official command-line tool.
+    var deepCheckWith = "claude"
+    /// "fast" or "best"; "fable" is Claude only, for plans that include it. "custom" keeps a model name set by hand
+    /// in an older settings file until Speed is changed.
+    var deepCheckSpeed = "best"
+    /// The Claude Code model for the chosen speed.
+    var claudeModel: String {
+        switch deepCheckSpeed {
+        case "fast": "sonnet"
+        case "fable": "fable"
+        case "custom": deepCheckModel
+        default: "opus"
+        }
+    }
+    /// Shown in menus and messages: "Claude", "ChatGPT" or "Gemini".
+    var deepCheckName: String { deepCheckWith == "chatgpt" ? "ChatGPT" : deepCheckWith == "gemini" ? "Gemini" : "Claude" }
+    /// Codex and the Antigravity CLI, wherever their installers put them.
+    var codexExecutable: String? { Config.firstExecutable("codex") }
+    var geminiExecutable: String? { Config.firstExecutable("agy") }
+    static func firstExecutable(_ name: String) -> String? {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return ["/opt/homebrew/bin/", "/usr/local/bin/", home + "/.local/bin/", home + "/.antigravity/bin/"]
+            .map { $0 + name }.first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
     /// Optional style rules on top of grammar. All off by default.
     var houseStyle = HouseStyle()
     /// Set once the welcome window has been shown.
@@ -58,6 +84,10 @@ struct Config: Codable {
         officeApps = try c.decodeIfPresent([String].self, forKey: .officeApps) ?? d.officeApps
         claudePath = try c.decodeIfPresent(String.self, forKey: .claudePath) ?? d.claudePath
         deepCheckModel = try c.decodeIfPresent(String.self, forKey: .deepCheckModel) ?? d.deepCheckModel
+        deepCheckWith = try c.decodeIfPresent(String.self, forKey: .deepCheckWith) ?? d.deepCheckWith
+        // Files from before the Speed choice keep the model they had.
+        deepCheckSpeed = try c.decodeIfPresent(String.self, forKey: .deepCheckSpeed)
+            ?? (["sonnet": "fast", "fable": "fable", "opus": "best"][deepCheckModel] ?? "custom")
         houseStyle = try c.decodeIfPresent(HouseStyle.self, forKey: .houseStyle) ?? d.houseStyle
         welcomed = try c.decodeIfPresent(Bool.self, forKey: .welcomed) ?? d.welcomed
         cardAppearance = try c.decodeIfPresent(String.self, forKey: .cardAppearance) ?? d.cardAppearance

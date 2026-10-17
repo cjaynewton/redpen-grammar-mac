@@ -1,8 +1,9 @@
 import AppKit
 import RedpenCore
 
-/// Sends text to Claude through Claude Code (`claude -p`), so it runs on your Claude subscription, not an API key.
-/// The text goes in on stdin, never through a shell.
+/// Sends text to Claude, ChatGPT or Gemini through each one's official command-line tool (Claude Code, Codex,
+/// Antigravity CLI), so it runs on the writer's own plan, not an API key. Arguments go straight to the program,
+/// never through a shell.
 @MainActor
 final class DeepCheck {
     private var window: NSWindow?
@@ -22,14 +23,14 @@ final class DeepCheck {
 
     private func ask() {
         guard let text = lastText, let config = lastConfig else { return }
-        show(mode == .email ? "Asking Claude to rewrite this as an email\u{2026}" : "Asking Claude\u{2026}")
-        let claude = config.claudeExecutable, model = config.deepCheckModel
-        let prompt = DeepPrompt.build(config.houseStyle, mode: mode)
+        let name = config.deepCheckName
+        show(mode == .email ? "Asking \(name) to rewrite this as an email\u{2026}" : "Asking \(name)\u{2026}")
+        let job = DeepCheck.job(config, prompt: DeepPrompt.build(config.houseStyle, mode: mode), input: text)
         // Only the newest request may fill the window; an older one finishing late is dropped.
         request += 1
         let id = request
         Task.detached {
-            let result = DeepCheck.call(claude: claude, model: model, prompt: prompt, input: text)
+            let result = DeepCheck.call(job)
             await MainActor.run { if id == self.request { self.show(result) } }
         }
     }
@@ -39,46 +40,111 @@ final class DeepCheck {
         ask()
     }
 
-    /// Runs Claude Code with its tools, MCP servers, skills and hooks switched off, so Claude itself can only read
-    /// and answer the text. Hooks an organisation enforces by managed policy still run; no command line can switch
-    /// those off. Gives up after `limit` seconds, whatever stalls.
-    nonisolated static func call(claude: String, model: String, prompt: String, input: String, limit: TimeInterval = 180) -> String {
+    /// One run of a helper program: what to start, with which arguments and input, and where its answer lands.
+    struct Job: Sendable {
+        let name: String
+        let tool: String
+        let path: String?
+        let missing: String
+        let args: [String]
+        let input: String?
+        let answerFile: URL?
+        /// An empty folder made for this run alone, deleted afterwards. The helper starts here, so a tool that reads
+        /// or writes "the workspace" finds nothing of the writer's.
+        let folder: URL
+    }
+
+    /// Codex features that let the model act rather than answer: commands, browsers, apps, plugins, images.
+    nonisolated static let codexOff = ["shell_tool", "unified_exec", "shell_snapshot", "apps", "browser_use", "browser_use_external",
+                                       "in_app_browser", "computer_use", "image_generation", "view_image", "plugins",
+                                       "skill_search", "tool_suggest", "sleep_tool"]
+
+    /// Builds the run for the chosen helper. Each starts in its own empty folder.
+    ///
+    /// Claude Code runs with its tools, MCP servers, skills and hooks switched off, so Claude can only read and
+    /// answer the text. Hooks an organisation enforces by managed policy still run; no command line can switch
+    /// those off.
+    ///
+    /// Codex runs read-only, without the user's config, rules, MCP servers, project instructions or web search,
+    /// with its command, browser, app and plugin tools switched off, and saves nothing. Its global AGENTS.md still
+    /// loads; no flag skips it.
+    ///
+    /// The Antigravity CLI reads its prompt from the command line, so the text is appended there the way Codex
+    /// appends stdin. Headless runs refuse commands that would need approval, and file access is limited to the
+    /// empty folder. Commands the user has already allowed in their own Antigravity settings stay allowed; the CLI
+    /// has no flag to switch those off.
+    nonisolated static func job(_ c: Config, prompt: String, input: String) -> Job {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("redpen-deep-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        switch c.deepCheckWith {
+        case "chatgpt":
+            let answer = folder.appendingPathComponent("answer.txt")
+            return Job(name: "ChatGPT", tool: "Codex", path: c.codexExecutable,
+                       missing: "Deep check with ChatGPT needs Codex. Install it, then sign in with your ChatGPT account.",
+                       args: ["exec", "--skip-git-repo-check", "--ephemeral", "--ignore-user-config", "--ignore-rules",
+                              "-s", "read-only", "-C", folder.path, "--color", "never",
+                              "-c", "model_reasoning_effort=\"\(c.deepCheckSpeed == "fast" ? "low" : "high")\"",
+                              "-c", "project_doc_max_bytes=0", "-c", #"web_search="disabled""#]
+                           + codexOff.flatMap { ["--disable", $0] } + ["-o", answer.path, prompt],
+                       input: input, answerFile: answer, folder: folder)
+        case "gemini":
+            return Job(name: "Gemini", tool: "Antigravity CLI", path: c.geminiExecutable,
+                       missing: "Deep check with Gemini needs Google\u{2019}s Antigravity CLI. Install it, run agy once and sign in with your Google account.",
+                       args: ["-p", prompt + "\n\n<stdin>\n" + input + "\n</stdin>", "--output-format", "text",
+                              "--effort", c.deepCheckSpeed == "fast" ? "low" : "high"],
+                       input: nil, answerFile: nil, folder: folder)
+        default:
+            return Job(name: "Claude", tool: "Claude Code", path: c.claudeExecutable,
+                       missing: "Deep check with Claude needs Claude Code. Install it, then sign in with your Claude account.",
+                       args: ["-p", prompt, "--model", c.claudeModel, "--output-format", "text",
+                              "--tools", "", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence",
+                              "--settings", #"{"disableAllHooks":true}"#],
+                       input: input, answerFile: nil, folder: folder)
+        }
+    }
+
+    /// Runs a job and returns the answer or a plain error. Gives up after `limit` seconds, whatever stalls.
+    nonisolated static func call(_ job: Job, limit: TimeInterval = 180) -> String {
+        defer { try? FileManager.default.removeItem(at: job.folder) }
+        guard let path = job.path, FileManager.default.isExecutableFile(atPath: path) else { return job.missing }
         let p = Process()
-        p.executableURL = URL(fileURLWithPath: claude)
-        p.arguments = ["-p", prompt, "--model", model, "--output-format", "text",
-                       "--tools", "", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence",
-                       "--settings", #"{"disableAllHooks":true}"#]
-        p.currentDirectoryURL = FileManager.default.temporaryDirectory
+        p.executableURL = URL(fileURLWithPath: path)
+        p.arguments = job.args
+        p.currentDirectoryURL = job.folder
         var env = ProcessInfo.processInfo.environment
         env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + (env["PATH"] ?? "")
         p.environment = env
         let inPipe = Pipe(), outPipe = Pipe(), errPipe = Pipe()
-        p.standardInput = inPipe
+        p.standardInput = job.input == nil ? FileHandle.nullDevice : inPipe
         p.standardOutput = outPipe
         p.standardError = errPipe
         let done = DispatchSemaphore(value: 0)
         p.terminationHandler = { _ in done.signal() }
         // Output arrives in pieces into locked buffers, so whatever came is readable at any moment, and a helper
-        // that keeps a pipe open after Claude exits can't hide a finished reply.
+        // that keeps a pipe open after the tool exits can't hide a finished reply.
         let out = Collected(), err = Collected()
         out.watch(outPipe.fileHandleForReading)
         err.watch(errPipe.fileHandleForReading)
-        do { try p.run() } catch { return "Could not start Claude Code at \(claude).\n\(error.localizedDescription)" }
+        do { try p.run() } catch { return "Could not start \(job.tool) at \(path).\n\(error.localizedDescription)" }
         // Writing happens off this thread too: a program that stops reading its input can't stall past the limit.
-        let writer = inPipe.fileHandleForWriting
-        DispatchQueue.global().async {
-            try? writer.write(contentsOf: Data(input.utf8))
-            try? writer.close()
+        if let input = job.input {
+            let writer = inPipe.fileHandleForWriting
+            DispatchQueue.global().async {
+                try? writer.write(contentsOf: Data(input.utf8))
+                try? writer.close()
+            }
         }
         if done.wait(timeout: .now() + limit) == .timedOut {
             p.terminate()
-            return "Claude didn\u{2019}t answer within \(Int(limit / 60)) minutes. Try again, or check a shorter piece."
+            return "\(job.name) didn\u{2019}t answer within \(Int(limit / 60)) minutes. Try again, or check a shorter piece."
         }
         out.waitForEnd(seconds: 5)
         err.waitForEnd(seconds: 1)
-        let o = String(decoding: out.data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        // Codex prints its progress to the terminal and saves only the final answer to the file.
+        let raw = job.answerFile.flatMap { try? Data(contentsOf: $0) } ?? out.data
+        let o = String(decoding: raw, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         if p.terminationStatus != 0 || o.isEmpty {
-            return "Claude Code returned an error (exit \(p.terminationStatus)).\n\n" + String(decoding: err.data, as: UTF8.self)
+            return "\(job.tool) returned an error (exit \(p.terminationStatus)).\n\n" + String(decoding: err.data, as: UTF8.self)
         }
         return o
     }

@@ -61,8 +61,17 @@ public enum Rules {
             }
         }
 
+        out += StarterSet.issues(text, sets: style.starterSets,
+                                 skip: longform ? ownWords(style) : [])
+
         if style.flagOtherLanguages { out += languageIssues(text) }
         return out
+    }
+
+    /// The own-list words the container-word check will flag. It matches single words only, so a phrase on the list
+    /// leaves the starter sets to catch it.
+    static func ownWords(_ style: HouseStyle) -> Set<String> {
+        Set(style.containerWords.map { $0.lowercased() }.filter { !$0.contains(" ") })
     }
 
     // Grammar slips the small model lets through.

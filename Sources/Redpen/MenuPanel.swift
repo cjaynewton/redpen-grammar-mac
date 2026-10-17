@@ -42,11 +42,13 @@ final class PanelModel: ObservableObject {
     @Published var live = false
     @Published var trusted = true
     @Published var canDeepCheck = false
+    @Published var deepName = "Claude"
     @Published var summary = PatternSummary([])
     @Published var showAll = false { didSet { if showAll != oldValue { DispatchQueue.main.async { self.onLayoutChange?() } } } }
     @Published var helpers: [HelperRow] = [
         HelperRow(id: "claude", name: "Claude", letter: "C", tint: Color(red: 0.79, green: 0.39, blue: 0.26), state: .checking),
         HelperRow(id: "chatgpt", name: "ChatGPT", letter: "G", tint: Color(red: 0.06, green: 0.64, blue: 0.50), state: .checking),
+        HelperRow(id: "gemini", name: "Gemini", letter: "Ge", tint: Color(red: 0.26, green: 0.45, blue: 0.93), state: .checking),
         HelperRow(id: "apple", name: "Apple", letter: "A", tint: Color(white: 0.43), state: .checking),
     ]
     private var helpersCheckedAt = Date.distantPast
@@ -62,6 +64,7 @@ final class PanelModel: ObservableObject {
         let s = host.statusLine()
         status = s.text; live = s.live
         canDeepCheck = host.canDeepCheck
+        deepName = host.config.deepCheckName
         summary = PatternSummary(Mistakes.shared.all())
         if Date().timeIntervalSince(helpersCheckedAt) > 300 { checkHelpers(claudePath: host.config.claudeExecutable) }
     }
@@ -73,9 +76,11 @@ final class PanelModel: ObservableObject {
         Task.detached {
             let claude = Helpers.claude(path: claudePath)
             let codex = Helpers.codex()
+            let gemini = Helpers.gemini()
             await MainActor.run {
                 self.set("claude", claude)
                 self.set("chatgpt", codex)
+                self.set("gemini", gemini)
             }
         }
     }
@@ -94,9 +99,14 @@ enum Helpers {
     }
 
     static func codex() -> HelperRow.State {
-        guard let path = ["/opt/homebrew/bin/codex", "/usr/local/bin/codex"].first(where: { FileManager.default.isExecutableFile(atPath: $0) })
+        guard let path = Config.firstExecutable("codex")
         else { return .notSetUp("Install Codex to use your ChatGPT plan") }
         return run(path, ["login", "status"]).localizedCaseInsensitiveContains("logged in using chatgpt") ? .connected : .notSetUp("Sign in to Codex with ChatGPT")
+    }
+
+    /// Google's Antigravity CLI keeps its sign-in to itself, so Redpen can only tell whether it is installed.
+    static func gemini() -> HelperRow.State {
+        Config.firstExecutable("agy") == nil ? .notSetUp("Install Google\u{2019}s Antigravity CLI to use your Google AI plan") : .connected
     }
 
     /// Runs a helper with fixed arguments (never through a shell) and returns what it printed.
@@ -209,7 +219,7 @@ struct PanelView: View {
         VStack(alignment: .leading, spacing: 12) {
             row("Fix mistake at cursor", key: "\u{2303}\u{2325}R") { close(); model.host?.fixAtCursor() }
             row("Fix all in this paragraph", key: "\u{2303}\u{2325}\u{21E7}R") { close(); model.host?.fixAllAtCursor() }
-            row("Deep check with Claude", key: nil) { close(); model.host?.deepCheck() }
+            row("Deep check with \(model.deepName)", key: nil) { close(); model.host?.deepCheck() }
                 .disabled(!model.canDeepCheck)
         }
     }
@@ -311,7 +321,7 @@ struct PanelView: View {
     private func stateText(_ h: HelperRow) -> some View {
         switch h.state {
         case .checking: return Text("Checking\u{2026}").foregroundStyle(.tertiary)
-        case .connected: return Text(h.id == "apple" ? "On this Mac" : "Connected").foregroundStyle(.green)
+        case .connected: return Text(h.id == "apple" ? "On this Mac" : h.id == "gemini" ? "Installed" : "Connected").foregroundStyle(.green)
         case .notSetUp: return Text("Not set up").foregroundStyle(.orange)
         case .off: return Text("Off on this Mac").foregroundStyle(.secondary)
         }
@@ -322,33 +332,33 @@ struct PanelView: View {
             Text("Underline")
             Spacer()
             Picker("Underline", selection: $model.calm) {
-                Text("Mistakes").tag(true)
-                Text("Everything").tag(false)
+                Text("Mistakes only").tag(true)
+                Text("Mistakes and tips").tag(false)
             }
             .pickerStyle(.segmented).labelsHidden().fixedSize()
-            .help("Mistakes: only sure spelling and grammar mistakes. Everything: also your style rules and Apple\u{2019}s maybes.")
+            .help("Mistakes only: sure spelling and grammar mistakes, in red. Mistakes and tips: also your style rules and Apple\u{2019}s maybes, in purple.")
         }
     }
 
     @ViewBuilder private var cardStyle: some View {
         HStack {
-            Text("Fix card")
+            Text("Fix box")
             Spacer()
-            Picker("Fix card", selection: $model.cardStyle) {
-                Text("Roomy").tag("roomy")
+            Picker("Fix box", selection: $model.cardStyle) {
+                Text("Simple").tag("roomy")
                 Text("Sentence").tag("sentence")
                 Text("Keyboard").tag("keyboard")
             }
             .pickerStyle(.segmented).labelsHidden().fixedSize()
-            .help("Roomy: the fix large, with the lesson. Sentence: the whole sentence with the fix in place. Keyboard: Return accepts, Esc skips, Tab moves to the next mistake.")
+            .help("Simple: the fix large, with the lesson. Sentence: the whole sentence with the fix in place. Keyboard: Return accepts, Esc skips, Tab moves to the next mistake.")
         }
     }
 
     @ViewBuilder private var cardLook: some View {
         HStack {
-            Text("Card")
+            Text("Colour")
             Spacer()
-            Picker("Card", selection: $model.cardLook) {
+            Picker("Box colour", selection: $model.cardLook) {
                 Text("Light").tag("light")
                 Text("Dark").tag("dark")
                 Text("Match Mac").tag("system")
@@ -472,6 +482,7 @@ final class MenuPanel: NSObject, NSWindowDelegate {
         model.refresh()
         model.set("claude", Helpers.claude(path: host.config.claudeExecutable))
         model.set("chatgpt", Helpers.codex())
+        model.set("gemini", Helpers.gemini())
         for look in ["light", "dark"] {
             // The real popover paints its own background; the test render needs one behind the view.
             let view = NSHostingView(rootView: PanelView(model: model))

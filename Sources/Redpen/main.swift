@@ -28,19 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
             exit(0)
         }
         if let i = CommandLine.arguments.firstIndex(of: "--render-card"), i + 1 < CommandLine.arguments.count {
-            var card = SuggestionPanel.Card(kind: "Grammar", color: IssueKind.grammar.color, marks: [("was", "were")],
-                                            message: "For something that isn\u{2019}t true, use \u{201C}were\u{201D}: \u{201C}if I were\u{201D}, \u{201C}I wish it were\u{201D}.",
-                                            why: nil, example: "If I were the buyer\u{2026} / The contract requires that he sign.")
-            card.primary = .init(title: "Use \u{201C}were\u{201D}") {}
-            card.ignore = .init(title: "Ignore") {}
-            card.title = "Verb doesn\u{2019}t match"
-            let sentence = "If I was the buyer, I would wait."
-            card.sentence = (sentence, (sentence as NSString).range(of: "was"), "were")
-            card.position = (2, 4)
-            card.count = 3
-            card.fixAll = (3, .init(title: "Fix all 3") {})
-            card.footer = []
-            card.onStep = { _ in }
+            let card = SuggestionPanel.sample
             // Crowded: long alternatives, a dictionary link and a count, which must wrap rather than cut words short.
             var long = SuggestionPanel.Card(kind: "Spelling", color: IssueKind.spelling.color, marks: [("controversal", "controversial")],
                                             message: nil, why: nil, example: nil, count: 4)
@@ -82,12 +70,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
             }
             exit(0)
         }
-        // Debug: run a Deep check on a file and print Claude's reply. `--deep email draft.txt`
+        // Debug: run a Deep check on a file and print the reply. `--deep email draft.txt`
         if let i = CommandLine.arguments.firstIndex(of: "--deep"), i + 2 < CommandLine.arguments.count,
            let mode = DeepMode(rawValue: CommandLine.arguments[i + 1]),
            let text = try? String(contentsOfFile: CommandLine.arguments[i + 2], encoding: .utf8) {
-            let c = watcher.config
-            print(DeepCheck.call(claude: c.claudeExecutable, model: c.deepCheckModel, prompt: DeepPrompt.build(c.houseStyle, mode: mode), input: text))
+            var c = watcher.config
+            // `--with chatgpt` and `--speed fast` try another helper without touching the settings file.
+            if let w = CommandLine.arguments.firstIndex(of: "--with"), w + 1 < CommandLine.arguments.count { c.deepCheckWith = CommandLine.arguments[w + 1] }
+            if let w = CommandLine.arguments.firstIndex(of: "--speed"), w + 1 < CommandLine.arguments.count { c.deepCheckSpeed = CommandLine.arguments[w + 1] }
+            print(DeepCheck.call(DeepCheck.job(c, prompt: DeepPrompt.build(c.houseStyle, mode: mode), input: text)))
             exit(0)
         }
         // Debug: download and start the grammar engine, check one sentence, print the result. `--install-engine`

@@ -16,8 +16,10 @@ public struct HouseStyle: Codable, Sendable, Equatable {
     /// Hold spelling to one English: "en_CA", "en_US" or "en_GB". Empty accepts all three.
     /// With "en_CA", "color" is flagged and "colour" suggested.
     public var spelling = ""
-    /// Extra instructions for "Deep check with Claude", e.g. "Keep my short sentences."
+    /// Extra instructions for Deep check, e.g. "Keep my short sentences."
     public var deepCheckNotes = ""
+    /// Starter word lists switched on by id: "plain", "ai", "hedging". See `StarterSet`.
+    public var starterSets: [String] = []
 
     public init() {}
 
@@ -31,6 +33,7 @@ public struct HouseStyle: Codable, Sendable, Equatable {
         flagOtherLanguages = try c.decodeIfPresent(Bool.self, forKey: .flagOtherLanguages) ?? d.flagOtherLanguages
         spelling = try c.decodeIfPresent(String.self, forKey: .spelling) ?? d.spelling
         deepCheckNotes = try c.decodeIfPresent(String.self, forKey: .deepCheckNotes) ?? d.deepCheckNotes
+        starterSets = try c.decodeIfPresent([String].self, forKey: .starterSets) ?? d.starterSets
     }
 
     /// The example style that ships in examples/: every rule on.
@@ -48,6 +51,6 @@ public struct HouseStyle: Codable, Sendable, Equatable {
     }()
 
     public var isEmpty: Bool {
-        !noDashes && !colonsOnlyForLabels && containerWords.isEmpty && disclaimers.isEmpty && !flagOtherLanguages && spelling.isEmpty
+        !noDashes && !colonsOnlyForLabels && containerWords.isEmpty && disclaimers.isEmpty && !flagOtherLanguages && spelling.isEmpty && starterSets.isEmpty
     }
 }

@@ -229,6 +229,22 @@ func safetyChecks() {
     let mixed = Rules.check("To Be Clear, we ship.", longform: false, style: style).filter { $0.message.hasPrefix("Disclaimer") }
     check("disclaimer found in any case", mixed.first?.original == "To Be Clear,")
 
+    // Starter sets (Oct 17 2026): whole words only, either apostrophe, capitals kept, own list wins.
+    var sets = HouseStyle()
+    sets.starterSets = ["plain", "ai"]
+    let plain = Rules.check("Utilize the tools in order to win.", longform: false, style: sets).filter { $0.kind == .voice }
+    check("plain English offers the short word with its capital", plain.contains { $0.original == "Utilize" && $0.replacements == ["Use"] })
+    check("plain English catches a phrase", plain.contains { $0.original == "in order to" && $0.replacements == ["to"] })
+    check("starter set ignores part of a word", Rules.check("The redelve team.", longform: false, style: sets).allSatisfy { $0.kind != .voice })
+    check("curly apostrophe matches", Rules.check("It\u{2019}s worth noting the cost.", longform: false, style: sets).contains { $0.kind == .voice })
+    check("switched-off set stays quiet", Rules.check("I think so.", longform: false, style: sets).allSatisfy { $0.kind != .voice })
+    check("all capitals stay all capitals", Rules.check("UTILIZE IT.", longform: false, style: sets).contains { $0.replacements == ["USE"] })
+    sets.containerWords = ["in order to"]
+    check("a phrase on your own list still gets the starter warning",
+          Rules.check("We trained in order to win.", longform: true, style: sets).contains { $0.original == "in order to" })
+    sets.containerWords = ["leverage"]
+    check("a word on your own list is flagged once", Rules.check("We leverage it.", longform: true, style: sets).filter { $0.original == "leverage" }.count == 1)
+
     let stale = Issue(range: NSRange(location: 40, length: 6), kind: .grammar, message: "x", replacements: ["y"], original: "Paris.")
     check("grammar result from longer old text is dropped, no crash", Engine.protectNames([stale], in: "a").isEmpty)
     let moved = Issue(range: NSRange(location: 0, length: 3), kind: .grammar, message: "x", replacements: ["y"], original: "dog")

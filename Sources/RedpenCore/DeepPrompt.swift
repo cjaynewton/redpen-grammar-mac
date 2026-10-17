@@ -28,7 +28,7 @@ public enum EmailRules {
 }
 
 public enum DeepPrompt {
-    /// The instructions for Claude, from the writer's house style and the chosen mode.
+    /// The instructions for the Deep check model, from the writer's house style and the chosen mode.
     public static func build(_ style: HouseStyle, mode: DeepMode) -> String {
         var rules: [String] = []
         if style.noDashes { rules.append("no em dashes; use a period or comma") }
@@ -36,6 +36,14 @@ public enum DeepPrompt {
         if !style.containerWords.isEmpty { rules.append("avoid vague words like " + style.containerWords.prefix(6).joined(separator: ", ")) }
         if !style.disclaimers.isEmpty { rules.append("cut defensive disclaimers") }
         if style.flagOtherLanguages { rules.append("the result must be in English") }
+        for set in StarterSet.all where style.starterSets.contains(set.id) {
+            switch set.id {
+            case "plain": rules.append("prefer the short plain word (use, not utilize; to, not in order to)")
+            case "ai": rules.append("avoid words readers link with machine writing, such as delve, tapestry, seamless")
+            case "hedging": rules.append("cut softeners such as I think, sort of, basically")
+            default: break
+            }
+        }
 
         var p: String
         switch mode {

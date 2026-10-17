@@ -143,16 +143,47 @@ final class SuggestionPanel: NSObject {
 
     /// Draws a card into a PNG without showing it, for checking type and layout from the command line.
     static func render(_ card: Card, appearance: String, style: String = "roomy", to path: String) {
+        guard let rep = bitmap(card, appearance: appearance, style: style) else { return }
+        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+    }
+
+    /// The card as a picture, for the preview in Settings.
+    static func image(_ card: Card, appearance: String, style: String) -> NSImage? {
+        guard let rep = bitmap(card, appearance: appearance, style: style) else { return nil }
+        let img = NSImage(size: rep.size)
+        img.addRepresentation(rep)
+        return img
+    }
+
+    private static func bitmap(_ card: Card, appearance: String, style: String) -> NSBitmapImageRep? {
         let p = SuggestionPanel()
         p.appearance = appearance
         p.style = style
         let (box, size) = p.build(card)
         box.frame = NSRect(origin: .zero, size: size)
-        box.appearance = NSAppearance(named: appearance == "dark" ? .darkAqua : .aqua)
+        box.appearance = NSAppearance(named: p.dark ? .darkAqua : .aqua)
         box.layoutSubtreeIfNeeded()
-        guard let rep = box.bitmapImageRepForCachingDisplay(in: box.bounds) else { return }
+        guard let rep = box.bitmapImageRepForCachingDisplay(in: box.bounds) else { return nil }
         box.cacheDisplay(in: box.bounds, to: rep)
-        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+        return rep
+    }
+
+    /// The example card shown in Settings and drawn by `--render-card`: one grammar fix, the third of four.
+    static var sample: Card {
+        var card = Card(kind: "Grammar", color: IssueKind.grammar.color, marks: [("was", "were")],
+                        message: "For something that isn\u{2019}t true, use \u{201C}were\u{201D}: \u{201C}if I were\u{201D}, \u{201C}I wish it were\u{201D}.",
+                        why: nil, example: "If I were the buyer\u{2026} / The contract requires that he sign.")
+        card.primary = .init(title: "Use \u{201C}were\u{201D}") {}
+        card.ignore = .init(title: "Ignore") {}
+        card.title = "Verb doesn\u{2019}t match"
+        let sentence = "If I was the buyer, I would wait."
+        card.sentence = (sentence, (sentence as NSString).range(of: "was"), "were")
+        card.position = (2, 4)
+        card.count = 3
+        card.fixAll = (3, .init(title: "Fix all 3") {})
+        card.footer = []
+        card.onStep = { _ in }
+        return card
     }
 
     /// The card's view and its size.
