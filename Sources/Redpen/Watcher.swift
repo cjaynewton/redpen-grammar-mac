@@ -413,7 +413,7 @@ final class Watcher {
             return rep.isEmpty ? "Cut it" : t.isEmpty ? "Replace" : t
         }
         func use(_ rep: String) -> SuggestionPanel.Choice {
-            .init(title: rep.isEmpty ? "Cut it" : "Use \u{201C}\(shown(rep))\u{201D}") { [weak self] in self?.apply(issue, rep, in: el) }
+            .init(title: rep.isEmpty ? "Cut it" : "Use \u{201C}\(shown(rep))\u{201D}", next: true) { [weak self] in self?.apply(issue, rep, in: el) }
         }
         var footer: [SuggestionPanel.Choice] = []
         if issue.kind == .spelling {
@@ -421,11 +421,12 @@ final class Watcher {
                 Spelling.learn(issue.original); self?.lastQuickAt = .distantPast
             })
         }
-        footer.append(.init(title: "Ignore") { [weak self] in self?.ignored.insert(issue.ignoreKey) })
+        let all = currentIssues(el, lastText).sorted { $0.range.location < $1.range.location }
         // More than one sure mistake in this paragraph: offer to fix them all at once.
         let paraRange = (lastText as NSString).paragraphRange(for: NSRange(location: min(issue.range.location, (lastText as NSString).length), length: 0))
-        if issue.kind != .voice, let n = Engine.fixAll(currentIssues(el, lastText), in: paraRange, of: lastText)?.fixed.count, n >= 2 {
-            footer.insert(.init(title: "Fix all \(n)") { [weak self] in self?.fixAll(in: paraRange, el) }, at: 0)
+        var fixAll: (count: Int, choice: SuggestionPanel.Choice)?
+        if issue.kind != .voice, let n = Engine.fixAll(all, in: paraRange, of: lastText)?.fixed.count, n >= 2 {
+            fixAll = (n, .init(title: "Fix all \(n)") { [weak self] in self?.fixAll(in: paraRange, el) })
         }
         let lesson = Lessons.lesson(for: issue)
         // "Spelled \u{201C}test\u{201D}." teaches nothing: show a spelling lesson only when it has a real memory trick.
@@ -439,11 +440,55 @@ final class Watcher {
                                         count: lesson.map { Mistakes.shared.count($0.id) } ?? 0)
         if let first = reps.first {
             card.primary = use(first)
-            card.alts = reps.dropFirst().map { rep in .init(title: shown(rep)) { [weak self] in self?.apply(issue, rep, in: el) } }
+            card.alts = reps.dropFirst().map { rep in .init(title: shown(rep), next: true) { [weak self] in self?.apply(issue, rep, in: el) } }
         }
         card.footer = footer
+        card.ignore = .init(title: "Ignore", next: true) { [weak self] in self?.ignored.insert(issue.ignoreKey) }
+        card.fixAll = fixAll
+        card.title = Self.cardTitle(issue)
+        if let (s, at) = Spelling.sentence(around: issue.range, in: lastText), (s as NSString).length <= 280 {
+            // Trailing spaces and line breaks only; the mistake's offset counts from the sentence's start.
+            var text = s
+            while let last = text.last, last.isWhitespace, (text as NSString).length > at + issue.range.length { text.removeLast() }
+            card.sentence = (text, NSRange(location: at, length: issue.range.length))
+        }
+        if let i = all.firstIndex(of: issue) { card.position = (i + 1, all.count) }
+        card.onStep = { [weak self] dir in self?.step(from: issue, dir) }
+        panel.style = config.cardStyle
         panel.appearance = config.cardAppearance
         panel.show(card, below: anchor, avoid: marks.filter { $0.issue != issue }.map(\.rect))
+    }
+
+    /// What is wrong in a few words, the title on the Whole sentence card.
+    static func cardTitle(_ issue: Issue) -> String {
+        if issue.tentative { return "Maybe a mistake" }
+        switch issue.kind {
+        case .spelling: return issue.replacements.isEmpty ? "Unknown word" : "Misspelled word"
+        case .grammar: return issue.replacements.first == "" ? "Extra word" : "Grammar fix"
+        case .voice: return "One of your rules"
+        }
+    }
+
+    /// Keyboard card: opens the next (1) or previous (-1) mistake, or after a fix (0) the first one from that
+    /// spot on. A fix needs a moment to land and be read back, so 0 waits for fresh text.
+    private func step(from issue: Issue, _ dir: Int, tries: Int = 0) {
+        let wait = dir == 0 ? 0.45 : 0.0
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak self] in
+            guard let self, let el = self.element else { return }
+            if self.lastText.isEmpty { if tries < 5 { self.step(from: issue, dir, tries: tries + 1) }; return }
+            let all = self.currentIssues(el, self.lastText).sorted { $0.range.location < $1.range.location }
+            guard let firstIssue = all.first, let lastIssue = all.last else { return }
+            let at = issue.range.location
+            let pick: Issue
+            switch dir {
+            case -1: pick = all.last { $0.range.location < at } ?? lastIssue
+            case 1: pick = all.first { $0.range.location > at } ?? firstIssue
+            default: pick = all.first { $0.range.location >= at } ?? firstIssue
+            }
+            guard let anchor = self.marks.first(where: { $0.issue == pick })?.rect ?? self.lineRects(el, pick.range).first.map(AX.toCocoa) else { return }
+            self.cardMark = self.marks.first { $0.issue == pick }
+            self.open(pick, in: el, anchor: anchor)
+        }
     }
 
     /// The engine's message, unless it only repeats the fix already shown ("Did you mean \u{201C}test\u{201D}?").

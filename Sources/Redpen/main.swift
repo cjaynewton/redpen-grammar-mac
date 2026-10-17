@@ -28,8 +28,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
                                             message: "For something that isn\u{2019}t true, use \u{201C}were\u{201D}: \u{201C}if I were\u{201D}, \u{201C}I wish it were\u{201D}.",
                                             why: nil, example: "If I were the buyer\u{2026} / The contract requires that he sign.")
             card.primary = .init(title: "Use \u{201C}were\u{201D}") {}
-            card.footer = [.init(title: "Ignore") {}]
-            for look in ["light", "dark"] { SuggestionPanel.render(card, appearance: look, to: "\(CommandLine.arguments[i + 1])-\(look).png") }
+            card.ignore = .init(title: "Ignore") {}
+            card.title = "Verb doesn\u{2019}t match"
+            let sentence = "If I was the buyer, I would wait."
+            card.sentence = (sentence, (sentence as NSString).range(of: "was"))
+            card.position = (2, 4)
+            card.count = 3
+            card.fixAll = (3, .init(title: "Fix all 3") {})
+            card.footer = []
+            card.onStep = { _ in }
+            for style in ["roomy", "sentence", "keyboard"] {
+                for look in ["light", "dark"] {
+                    SuggestionPanel.render(card, appearance: look, style: style, to: "\(CommandLine.arguments[i + 1])-\(style)-\(look).png")
+                }
+            }
             exit(0)
         }
         // Debug: run a Deep check on a file and print Claude's reply. `--deep email draft.txt`

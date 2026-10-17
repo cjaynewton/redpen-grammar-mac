@@ -10,6 +10,7 @@ Everything runs on your Mac. Your writing is never sent anywhere unless you choo
 
 - **Red underline:** spelling. **Blue:** grammar. **Purple:** your own house-style rules (optional).
 - **Click an underline** to see the fix, a one-line reason and an example. One click applies it.
+- **Three fix cards:** pick one in the menu. **Roomy** shows the fix large with its lesson, **Sentence** shows the whole sentence with the fix in place, and **Keyboard** lets you work through a draft without the mouse: Return accepts, Esc skips, Tab moves to the next mistake.
 - **Fix all:** when a paragraph has several mistakes, the card offers **Fix all**, or press Control-Option-Shift-R. Each word is fixed on its own, so bold and italics stay.
 - **Calm by default:** Redpen underlines only sure spelling and grammar mistakes. Switch **Underline** to **Everything** in the menu to also see your style rules and Apple's "maybe" suggestions.
 - **Spelling that reads the sentence:** with Apple Intelligence on, the first suggestion is the word the sentence needs. "I liked it, thougt it cost too much" offers *though*; "I thougt about it" offers *thought*. The choice is only ever one of the dictionary's own suggestions.

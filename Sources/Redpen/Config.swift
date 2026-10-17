@@ -36,6 +36,9 @@ struct Config: Codable {
     var welcomed = false
     /// The fix card's look: "light", "dark" or "system" (follow the Mac). Light suits the white pages most writing happens on.
     var cardAppearance = "light"
+    /// The fix card's layout: "roomy" (the note, large), "sentence" (the whole sentence with the fix in place)
+    /// or "keyboard" (Return accepts, Esc skips, Tab moves on).
+    var cardStyle = "roomy"
     /// Calm mode: underline only sure spelling and grammar mistakes. On for new users; people who set Redpen up
     /// before calm mode existed keep seeing everything until they switch.
     var calm = true
@@ -58,6 +61,7 @@ struct Config: Codable {
         houseStyle = try c.decodeIfPresent(HouseStyle.self, forKey: .houseStyle) ?? d.houseStyle
         welcomed = try c.decodeIfPresent(Bool.self, forKey: .welcomed) ?? d.welcomed
         cardAppearance = try c.decodeIfPresent(String.self, forKey: .cardAppearance) ?? d.cardAppearance
+        cardStyle = try c.decodeIfPresent(String.self, forKey: .cardStyle) ?? d.cardStyle
         calm = try c.decodeIfPresent(Bool.self, forKey: .calm) ?? !welcomed
     }
 

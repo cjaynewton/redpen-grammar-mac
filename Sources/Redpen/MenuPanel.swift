@@ -33,6 +33,9 @@ final class PanelModel: ObservableObject {
     @Published var cardLook = "light" {
         didSet { guard cardLook != oldValue else { return }; host?.config.cardAppearance = cardLook; host?.config.save(); onLookChange?(cardLook) }
     }
+    @Published var cardStyle = "roomy" {
+        didSet { guard cardStyle != oldValue else { return }; host?.config.cardStyle = cardStyle; host?.config.save() }
+    }
     var onLookChange: ((String) -> Void)?
     var onLayoutChange: (() -> Void)?
     @Published var status = ""
@@ -54,6 +57,7 @@ final class PanelModel: ObservableObject {
         trusted = AXIsProcessTrusted()
         enabled = host.config.enabled
         cardLook = host.config.cardAppearance
+        cardStyle = host.config.cardStyle
         calm = host.config.calm
         let s = host.statusLine()
         status = s.text; live = s.live
@@ -162,7 +166,7 @@ struct PanelView: View {
             group { actions }
             group { patterns }
             group { helpers }
-            group { VStack(spacing: 12) { underlineChoice; cardLook } }
+            group { VStack(spacing: 12) { underlineChoice; cardStyle; cardLook } }
             footer
         }
         .padding(16)
@@ -323,6 +327,20 @@ struct PanelView: View {
             }
             .pickerStyle(.segmented).labelsHidden().fixedSize()
             .help("Mistakes: only sure spelling and grammar mistakes. Everything: also your style rules and Apple\u{2019}s maybes.")
+        }
+    }
+
+    @ViewBuilder private var cardStyle: some View {
+        HStack {
+            Text("Fix card")
+            Spacer()
+            Picker("Fix card", selection: $model.cardStyle) {
+                Text("Roomy").tag("roomy")
+                Text("Sentence").tag("sentence")
+                Text("Keyboard").tag("keyboard")
+            }
+            .pickerStyle(.segmented).labelsHidden().fixedSize()
+            .help("Roomy: the fix large, with the lesson. Sentence: the whole sentence with the fix in place. Keyboard: Return accepts, Esc skips, Tab moves to the next mistake.")
         }
     }
 

@@ -136,9 +136,11 @@ final class TerminalMode {
         card.primary = .init(title: issues.count == 1 ? "Fix it" : "Fix all \(issues.count)") { [weak self] in
             self?.fix(issues, in: text)
         }
-        card.footer = [.init(title: "Ignore") { [weak self] in
+        card.ignore = .init(title: "Ignore") { [weak self] in
             for k in keys { self?.watcher.ignored.insert(k) }
-        }]
+        }
+        card.title = issues.count == 1 ? "One mistake in what you typed" : "\(issues.count) mistakes in what you typed"
+        watcher.panel.style = watcher.config.cardStyle
         watcher.panel.show(card, below: anchor())
     }
 
