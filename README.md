@@ -40,7 +40,11 @@ Measured with the test runner in this repo (see Development below):
 
 The published-writing test isn't included because it uses someone's own articles. Bring your own: put one paragraph per line in a file as `clean<TAB>paragraph<TAB>` and run `swift run redpen-test --blind-file yourfile.tsv`. Any flag on edited writing is a likely false alarm.
 
-## Install
+## Download
+
+**[Download the latest Redpen](https://github.com/cjaynewton/redpen-mac/releases/latest)** (the `.dmg` file), open it, and drag Redpen into Applications. It's signed and notarized by Apple, and needs **macOS 26 or later**. No Xcode or Homebrew is needed. The first time it opens, a welcome window walks you through the one permission macOS needs, then click **Turn on** next to **Full grammar** in the Redpen menu for the grammar engine.
+
+## Build from source
 
 You need **macOS 26 or later**, **Xcode** (free, from the Mac App Store; open it once after installing), and **[Homebrew](https://brew.sh)** for the grammar engine. **Apple Intelligence** turned on is recommended: without it Redpen still runs, minus the confused-word and meaning checks.
 
