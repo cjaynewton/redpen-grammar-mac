@@ -23,6 +23,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
             MenuPanel.render(host: self, to: CommandLine.arguments[i + 1])
             exit(0)
         }
+        if let i = CommandLine.arguments.firstIndex(of: "--render-settings"), i + 1 < CommandLine.arguments.count {
+            SettingsWindow.render(config: watcher.config, to: CommandLine.arguments[i + 1])
+            exit(0)
+        }
         if let i = CommandLine.arguments.firstIndex(of: "--render-card"), i + 1 < CommandLine.arguments.count {
             var card = SuggestionPanel.Card(kind: "Grammar", color: IssueKind.grammar.color, marks: [("was", "were")],
                                             message: "For something that isn\u{2019}t true, use \u{201C}were\u{201D}: \u{201C}if I were\u{201D}, \u{201C}I wish it were\u{201D}.",

@@ -82,7 +82,8 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 480)
+        // A fixed size: a grouped Form scrolls, so on its own it asks for no height and the window opened empty.
+        .frame(width: 480, height: 640)
         .onAppear { model.checkEngine() }
     }
 }
@@ -92,20 +93,36 @@ final class SettingsWindow {
     private var window: NSWindow?
     private var model: SettingsModel?
 
+    /// Draws the settings window into a PNG without showing it, for checking layout from the command line.
+    static func render(config: Config, to path: String) {
+        let w = makeWindow(NSHostingController(rootView: SettingsView(model: SettingsModel(config: config) { _ in })))
+        guard let v = w.contentView else { return }
+        v.layoutSubtreeIfNeeded()
+        guard let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { return }
+        v.cacheDisplay(in: v.bounds, to: rep)
+        try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+    }
+
+    private static func makeWindow(_ host: NSViewController) -> NSWindow {
+        let w = NSWindow(contentViewController: host)
+        w.title = "Redpen Settings"
+        w.styleMask = [.titled, .closable]
+        w.isReleasedWhenClosed = false
+        w.setContentSize(NSSize(width: 480, height: 640))
+        w.center()
+        return w
+    }
+
     func show(config: Config, onChange: @escaping (Config) -> Void) {
         let m = SettingsModel(config: config, onChange: onChange)
         model = m
         let host = NSHostingController(rootView: SettingsView(model: m))
         if window == nil {
-            let w = NSWindow(contentViewController: host)
-            w.title = "Redpen Settings"
-            w.styleMask = [.titled, .closable]
-            w.isReleasedWhenClosed = false
-            w.center()
-            window = w
+            window = Self.makeWindow(host)
         } else {
             window?.contentViewController = host
         }
+        window?.setContentSize(NSSize(width: 480, height: 640))
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
     }
