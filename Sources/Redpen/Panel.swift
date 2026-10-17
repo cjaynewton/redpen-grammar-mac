@@ -46,8 +46,9 @@ final class SuggestionPanel: NSObject {
         var footer: [Choice] = []
         /// What is wrong in a few words ("Misspelled word"), for the Whole sentence style.
         var title: String? = nil
-        /// The sentence holding the mistake, the mistake's range inside it, and the raw fix ("" deletes).
-        var sentence: (text: String, range: NSRange, fix: String)? = nil
+        /// The sentence holding the mistake, the mistake's range inside it, and the raw fix: "" deletes the words,
+        /// nil means there is no suggestion (the words are only marked).
+        var sentence: (text: String, range: NSRange, fix: String?)? = nil
         /// This mistake's place among all of them in the field: (1, 4) is "1 of 4".
         var position: (Int, Int)? = nil
         var ignore: Choice? = nil
@@ -228,11 +229,18 @@ final class SuggestionPanel: NSObject {
             let fix = sent.fix
             let ns = sent.text as NSString
             let t = NSMutableAttributedString(string: ns.substring(to: sent.range.location), attributes: [.font: Self.serif(19), .foregroundColor: p.ink])
-            t.append(NSAttributedString(string: ns.substring(with: sent.range), attributes: [
-                .font: Self.serif(19), .foregroundColor: p.mid,
-                .strikethroughStyle: NSUnderlineStyle.single.rawValue, .strikethroughColor: card.color]))
+            if fix == nil {
+                // No suggestion: mark the words, never strike them, so it does not read as "delete this".
+                t.append(NSAttributedString(string: ns.substring(with: sent.range), attributes: [
+                    .font: Self.serif(19), .foregroundColor: p.ink,
+                    .underlineStyle: NSUnderlineStyle.single.rawValue | NSUnderlineStyle.patternDot.rawValue, .underlineColor: card.color]))
+            } else {
+                t.append(NSAttributedString(string: ns.substring(with: sent.range), attributes: [
+                    .font: Self.serif(19), .foregroundColor: p.mid,
+                    .strikethroughStyle: NSUnderlineStyle.single.rawValue, .strikethroughColor: card.color]))
+            }
             // A deletion shows only the struck word; a fix follows it, exactly as it will be typed.
-            if !fix.isEmpty {
+            if let fix, !fix.isEmpty {
                 t.append(NSAttributedString(string: "\u{2009}", attributes: [.font: Self.serif(19)]))
                 t.append(NSAttributedString(string: fix, attributes: [
                     .font: Self.serif(19, weight: .medium), .foregroundColor: p.ink, .backgroundColor: p.fix]))

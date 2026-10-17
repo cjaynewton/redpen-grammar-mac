@@ -66,7 +66,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
             term.primary = .init(title: "Fix all 2") {}
             term.ignore = .init(title: "Ignore") {}
             term.takesKeys = false
-            for (name, c) in [("main", card), ("long", long), ("cut", cut), ("term", term)] {
+            // A warning with no suggestion: the words are marked, never struck.
+            var flag = SuggestionPanel.Card(kind: "Your rules", color: IssueKind.voice.color, marks: [("leverage", nil)],
+                                            message: "A vague word. Say what you will actually do.", why: nil, example: nil)
+            flag.ignore = .init(title: "Ignore") {}
+            flag.title = "One of your rules"
+            let fs = "We can leverage the new carrier."
+            flag.sentence = (fs, (fs as NSString).range(of: "leverage"), nil)
+            for (name, c) in [("main", card), ("long", long), ("cut", cut), ("term", term), ("flag", flag)] {
                 for style in ["roomy", "sentence", "keyboard"] {
                     for look in ["light", "dark"] {
                         SuggestionPanel.render(c, appearance: look, style: style, to: "\(CommandLine.arguments[i + 1])-\(name)-\(style)-\(look).png")
