@@ -105,6 +105,8 @@ final class PanelModel: ObservableObject {
         let forward = to != .main && (page == .main || (page == .settings && to != .settings))
         withAnimation(.easeOut(duration: 0.2)) { direction = forward ? .trailing : .leading; page = to }
         if to == .main { settings = nil; refresh() }
+        // Each page has its own size (the fix box page is wider), so the panel is measured and placed again.
+        if !rendering { DispatchQueue.main.async { self.onLayoutChange?() } }
     }
 
     /// Esc on a page goes back one step; on the menu it closes the panel.
@@ -424,6 +426,13 @@ final class MenuPanel: NSObject, NSWindowDelegate {
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         window.isReleasedWhenClosed = false
         window.delegate = self
+        // An NSPanel hides itself without a word when its app stops being active, which looked like the menu
+        // vanishing. It stays put instead, and losing focus closes it through close(), which logs why.
+        window.hidesOnDeactivate = false
+        NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            let to = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?"
+            MainActor.assumeIsolated { self?.close("Redpen stopped being the active app, \(to) took over", restoreFocus: false) }
+        }
         model.onLookChange = { [weak self] look in self?.applyLook(look) }
         model.onLayoutChange = { [weak self] in self?.place() }
         model.onLeave = { [weak self] in self?.close("opened another app", restoreFocus: false) }
@@ -442,7 +451,14 @@ final class MenuPanel: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         outsideClicks = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            MainActor.assumeIsolated { self?.close("click outside") }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let p = NSEvent.mouseLocation, f = self.window.frame
+                let at = "\(Int(p.x)),\(Int(p.y)), panel \(Int(f.minX)),\(Int(f.minY)) \(Int(f.width))x\(Int(f.height))"
+                // A click another app received inside the panel's own frame is not the writer leaving the menu.
+                if f.contains(p) { Log.note("menu panel: a click at \(at) went to another app; kept open"); return }
+                self.close("click outside at \(at)")
+            }
         }
         escapeKey = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
             if e.keyCode == 53 {
