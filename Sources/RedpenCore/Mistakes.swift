@@ -51,6 +51,25 @@ public final class Mistakes: @unchecked Sendable {
         return text.split(separator: "\n").compactMap { try? dec.decode(MistakeRecord.self, from: Data($0.utf8)) }
     }
 
+    /// Keeps only the last `days` days, since nothing Redpen shows looks back further than 30. Run at launch.
+    /// A line whose date can't be read is kept, so a format change never empties the file.
+    public func trim(keepDays days: Int = 90, now: Date = Date()) {
+        struct Dated: Decodable { let date: Date }
+        lock.lock(); defer { lock.unlock() }
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return }
+        let since = now.addingTimeInterval(-Double(days) * 86_400)
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .iso8601
+        let lines = text.split(separator: "\n")
+        let kept = lines.filter { line in
+            guard let d = try? dec.decode(Dated.self, from: Data(line.utf8)) else { return true }
+            return d.date >= since
+        }
+        guard kept.count < lines.count else { return }
+        try? Data(kept.map { $0 + "\n" }.joined().utf8).write(to: url, options: .atomic)
+        Private.lock(url)
+    }
+
     /// How many times this lesson came up in the last `days` days.
     public func count(_ lessonID: String, days: Int = 30, now: Date = Date()) -> Int {
         let since = now.addingTimeInterval(-Double(days) * 86_400)

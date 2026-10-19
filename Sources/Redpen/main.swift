@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
         Fonts.register()
         watcher = Watcher(config: Config.load())
         Private.lockFolder()
+        Mistakes.shared.trim()
         if let i = CommandLine.arguments.firstIndex(of: "--render-panel"), i + 1 < CommandLine.arguments.count {
             MenuPanel.render(host: self, to: CommandLine.arguments[i + 1])
             exit(0)

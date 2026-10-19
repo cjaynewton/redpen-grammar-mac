@@ -303,6 +303,20 @@ func safetyChecks() {
     check("an engine run by another login is not", !LanguageTool.ownerIsMe("p1127\nu502\nf138\n", uid: 501))
     check("no engine seen is not trusted", !LanguageTool.ownerIsMe("", uid: 501))
 
+    // The mistakes list keeps 90 days (Oct 19 2026).
+    let mURL = FileManager.default.temporaryDirectory.appendingPathComponent("redpen-trim-\(UUID().uuidString).jsonl")
+    let m = Mistakes(url: mURL)
+    let now = Date()
+    let recieve = Issue(range: NSRange(location: 0, length: 7), kind: .spelling, message: "", replacements: ["receive"], original: "recieve")
+    for d in [1.0, 30, 89, 91, 400] { m.record(recieve, replacement: "receive", app: "test", at: now.addingTimeInterval(-d * 86_400)) }
+    if let h = try? FileHandle(forWritingTo: mURL) { h.seekToEndOfFile(); h.write(Data("not a record\n".utf8)); try? h.close() }
+    m.trim(now: now)
+    check("fixes older than 90 days are dropped", m.all().count == 3)
+    check("a line Redpen can't read is kept, not wiped", (try? String(contentsOf: mURL, encoding: .utf8))?.contains("not a record") == true)
+    let perms = (try? FileManager.default.attributesOfItem(atPath: mURL.path)[.posixPermissions] as? Int) ?? 0
+    check("the trimmed list stays owner-only", perms == 0o600)
+    try? FileManager.default.removeItem(at: mURL)
+
     print(failed == 0 ? "safety checks: all pass" : "safety checks: \(failed) failed")
     if failed > 0 { exit(1) }
 }
