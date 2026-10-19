@@ -63,7 +63,7 @@ final class PanelModel: ObservableObject {
         let s = host.statusLine()
         status = s.text; live = s.live
         canDeepCheck = host.canDeepCheck
-        if host.config.deepCheckWith != "auto" { deepName = host.config.deepCheckName }
+        deepName = host.config.deepCheckWith == "auto" ? autoName() : host.config.deepCheckName
         summary = PatternSummary(Mistakes.shared.all())
         if Date().timeIntervalSince(helpersCheckedAt) > 300 { checkHelpers(claudePath: host.config.claudeExecutable) }
     }
@@ -81,12 +81,15 @@ final class PanelModel: ObservableObject {
                 self.set("chatgpt", codex)
                 self.set("gemini", gemini)
                 // On Automatic, the menu names the helper Deep check will actually use.
-                if self.host?.config.deepCheckWith == "auto" {
-                    self.deepName = [("claude", claude), ("chatgpt", codex), ("gemini", gemini)]
-                        .first { if case .connected = $0.1 { true } else { false } }.map { Config.name($0.0) } ?? "Claude"
-                }
+                if self.host?.config.deepCheckWith == "auto" { self.deepName = self.autoName() }
             }
         }
+    }
+
+    /// On Automatic, the first signed-in helper from the last check, in the order Deep check tries them.
+    private func autoName() -> String {
+        ["claude", "chatgpt", "gemini"].first { id in helpers.contains { $0.id == id && $0.state == .connected } }
+            .map(Config.name) ?? "Claude"
     }
 
     /// Slides to a page. Opening Settings from the menu reads the saved settings first; back on the menu, the

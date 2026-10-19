@@ -30,8 +30,8 @@ public enum LanguageTool {
     /// True when the server on port 8081 answers as LanguageTool (its language list must decode and include English)
     /// and the program listening there belongs to this Mac account. Any other program on the port, including one
     /// started by another login on the same Mac, gets no text from Redpen.
-    public static func isRunning() async -> Bool {
-        guard listenerIsMine() else { return false }
+    public static func isRunning(fresh: Bool = false) async -> Bool {
+        guard listenerIsMine(fresh: fresh) else { return false }
         var req = URLRequest(url: URL(string: "http://127.0.0.1:8081/v2/languages")!, timeoutInterval: 2)
         req.httpMethod = "GET"
         guard let (data, r) = try? await URLSession.shared.data(for: req), (r as? HTTPURLResponse)?.statusCode == 200
@@ -43,11 +43,12 @@ public enum LanguageTool {
     private static let ownerLock = NSLock()
 
     /// Asks lsof who is listening on 127.0.0.1:8081. lsof only sees this account's own programs, so a listener
-    /// owned by anyone else shows up as nobody and fails. A yes is kept for 30 seconds, since checks run several
-    /// times a second while you type; a no for 2, so a grammar engine that is still starting is seen soon.
-    public static func listenerIsMine(now: Date = Date()) -> Bool {
+    /// owned by anyone else shows up as nobody and fails. Status checks may reuse a yes for 30 seconds and a no
+    /// for 2; anything about to send writing passes `fresh` and asks again, so an engine that quit and was
+    /// replaced by another account's program is never trusted on an old answer.
+    public static func listenerIsMine(fresh: Bool = false, now: Date = Date()) -> Bool {
         ownerLock.lock(); defer { ownerLock.unlock() }
-        if let o = owner, now.timeIntervalSince(o.at) < (o.mine ? 30 : 2) { return o.mine }
+        if !fresh, let o = owner, now.timeIntervalSince(o.at) < (o.mine ? 30 : 2) { return o.mine }
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
         p.arguments = ["-nP", "-iTCP@127.0.0.1:8081", "-sTCP:LISTEN", "-Fu"]
@@ -89,7 +90,7 @@ public enum LanguageTool {
     public static func checkIfReady(_ text: String, language: String = "en-CA") async -> [Issue]? {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
         // Ask the port to prove it is LanguageTool before every check: the program behind it can change at any time.
-        guard await isRunning() else { return nil }
+        guard await isRunning(fresh: true) else { return nil }
         var req = URLRequest(url: url, timeoutInterval: 4)
         req.httpMethod = "POST"
         req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")

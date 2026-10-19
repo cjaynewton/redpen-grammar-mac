@@ -97,7 +97,7 @@ final class GrammarEngine: ObservableObject {
     /// The first check after a start takes about four seconds while LanguageTool loads its rules; run it here,
     /// so a real check never hits Redpen's short time limit.
     nonisolated static func warmUp() async {
-        guard LanguageTool.listenerIsMine() else { return }
+        guard LanguageTool.listenerIsMine(fresh: true) else { return }
         var req = URLRequest(url: URL(string: "http://127.0.0.1:8081/v2/check")!, timeoutInterval: 60)
         req.httpMethod = "POST"
         req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
