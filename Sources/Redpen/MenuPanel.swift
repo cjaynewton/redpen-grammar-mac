@@ -529,6 +529,12 @@ final class MenuPanel: NSObject, NSWindowDelegate {
         model.set("claude", Helpers.claude(path: host.config.claudeExecutable))
         model.set("chatgpt", Helpers.codex())
         model.set("gemini", Helpers.gemini())
+        // Settings asks the engine when it appears, which an offscreen render never does.
+        if let s = model.settings {
+            s.checkEngine()
+            let until = Date().addingTimeInterval(5)
+            while s.engineRunning == nil, Date() < until { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) }
+        }
         for look in ["light", "dark"] {
             // The real popover paints its own background; the test render needs one behind the view.
             let view = NSHostingView(rootView: PanelView(model: model))

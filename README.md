@@ -34,14 +34,15 @@ Everything runs on your Mac. Your writing is never sent anywhere unless you choo
 </picture>
 </p>
 
-Click a mistake and you choose how much you see: just the fix, or your whole sentence with the fix in place.
+Click a mistake and you choose, in Settings, what the fix box shows:
 
-<p align="center">
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/fix-card-dark.png">
-  <img src="docs/screenshots/fix-card-light.png" alt="Just the fix: the mistake, the fix and a short lesson" width="420">
-</picture>
-</p>
+<table>
+<tr>
+<td valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/fix-card-dark.png"><img src="docs/screenshots/fix-card-light.png" alt="Just the fix: the mistake, the fix and a short lesson" width="280"></picture><br><b>Just the fix</b><br>The mistake, the fix and a short lesson.</td>
+<td valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/fix-sentence-dark.png"><img src="docs/screenshots/fix-sentence-light.png" alt="The fix in my sentence: your whole sentence with the fix in place" width="280"></picture><br><b>The fix in my sentence</b><br>Your whole sentence, with the fix in place.</td>
+<td valign="top"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/fix-keyboard-dark.png"><img src="docs/screenshots/fix-keyboard-light.png" alt="One by one, with the keyboard: Return fixes, Esc skips, Tab goes to the next mistake" width="280"></picture><br><b>One by one, with the keyboard</b><br>Return fixes, Esc skips, Tab goes to the next mistake.</td>
+</tr>
+</table>
 
 Redpen never reads password managers, password fields, or browser pages whose title names a bank, card company, broker or payment app (Canadian, US, UK and Australian names are built in, and you can add more in the settings file). Its log holds app names and counts, never your writing, and the log, your settings and your mistakes list can only be opened by your own Mac account. Text goes to the grammar engine only when the engine on your Mac belongs to your account. Deep check runs Claude Code with its tools, MCP servers, skills and hooks switched off, Codex read-only in an empty folder with its command, browser and plugin tools, web search and MCP servers switched off (it still reads your personal `~/.codex/AGENTS.md`; Codex has no way to skip it), and the Antigravity CLI in an empty folder inside its sandbox, which restricts terminal commands, with commands that need approval refused. Commands you have already allowed in your own Antigravity settings stay allowed within that sandbox; the Antigravity CLI has no way to switch them off. Hooks your organisation enforces through a managed policy can't be switched off by Redpen.
 
