@@ -4,7 +4,12 @@ A free, private writing checker for macOS, from the Redpen family of writing too
 
 Everything runs on your Mac. Your writing is never sent anywhere unless you choose **Deep check**.
 
-<!-- Screenshot: docs/screenshot.png (an underline and the fix card in TextEdit) -->
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/fix-sentence-dark.png">
+  <img src="docs/screenshots/fix-sentence-light.png" alt="The fix box: your sentence with the fix in place, the rule in one line, and Accept" width="440">
+</picture>
+</p>
 
 ## What it does
 
@@ -17,6 +22,26 @@ Everything runs on your Mac. Your writing is never sent anywhere unless you choo
 - **Your patterns** (in the menu) shows which mistakes keep coming back this week, and whether each is going up or down. The record stays on your Mac and holds only the flagged words and the fix, never your surrounding text.
 - **Terminal:** when you type a sentence (not a command) in Terminal, or another terminal that tells the Mac which pane has focus, a small bubble offers to fix it. Where a terminal doesn't say, Redpen stays quiet rather than risk fixing the wrong tab.
 - **Deep check** (optional): sends the paragraph you're in to Claude, ChatGPT or Gemini through each one's official command-line tool and the plan you already have: [Claude Code](https://claude.com/claude-code) for Claude, [Codex](https://github.com/openai/codex) for ChatGPT, Google's [Antigravity CLI](https://antigravity.google/docs/cli/headless/) for Gemini. Pick one in **Settings**, under **Advanced**, with **Fast** or **Best**. It shows a revised version and a list of changes. When the text is an email that asks for something, it adds up to three notes on how to make it easier to answer. Switch the window to **Email** to have it rewritten as one: the ask up top, one ask, easy to say yes to. The ten email rules are in `Sources/RedpenCore/DeepPrompt.swift`, written in Redpen's own words from ideas in Joanna Wiebe's Copyhackers courses and Todd Rogers and Jessica Lasky-Fink's *Writing for Busy Readers*.
+
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/menu-dark.png">
+  <img src="docs/screenshots/menu-light.png" alt="The Redpen menu: shortcuts, your patterns this week, and the AI helpers" width="300">
+</picture>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings-dark.png">
+  <img src="docs/screenshots/settings-light.png" alt="Settings inside the menu: everyday choices on one page" width="300">
+</picture>
+</p>
+
+Click a mistake and you choose how much you see: just the fix, or your whole sentence with the fix in place.
+
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/fix-card-dark.png">
+  <img src="docs/screenshots/fix-card-light.png" alt="Just the fix: the mistake, the fix and a short lesson" width="420">
+</picture>
+</p>
 
 Redpen never reads password managers, password fields, or browser pages whose title names a bank, card company, broker or payment app (Canadian, US, UK and Australian names are built in, and you can add more in the settings file). Its log holds app names and counts, never your writing, and the log, your settings and your mistakes list can only be opened by your own Mac account. Text goes to the grammar engine only when the engine on your Mac belongs to your account. Deep check runs Claude Code with its tools, MCP servers, skills and hooks switched off, Codex read-only in an empty folder with its command, browser and plugin tools, web search and MCP servers switched off (it still reads your personal `~/.codex/AGENTS.md`; Codex has no way to skip it), and the Antigravity CLI in an empty folder inside its sandbox, which restricts terminal commands, with commands that need approval refused. Commands you have already allowed in your own Antigravity settings stay allowed within that sandbox; the Antigravity CLI has no way to switch them off. Hooks your organisation enforces through a managed policy can't be switched off by Redpen.
 

@@ -512,6 +512,10 @@ final class MenuPanel: NSObject, NSWindowDelegate {
     /// Draws the panel into PNG files without showing it, so its layout can be checked from the command line.
     /// The menu goes to `prefix-light.png` and `prefix-dark.png`; other pages to `prefix-settings-light.png` and so on.
     static func render(host: PanelHost, to prefix: String, pages: [PanelModel.Page] = [.main]) {
+        // Give the grammar engine row its real answer rather than "Checking…".
+        GrammarEngine.shared.startIfInstalled()
+        let until = Date().addingTimeInterval(5)
+        while GrammarEngine.shared.state == .checking, Date() < until { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) }
         for page in pages { render(host: host, to: page == .main ? prefix : "\(prefix)-\(page)", page: page) }
     }
 
