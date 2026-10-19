@@ -241,12 +241,8 @@ struct SettingsPage: View {
                 Group {
                     NextRow(label: "Advanced", sub: "Your own words and Deep check") { panel.go(.advanced) }
                 }
-                HStack {
-                    Text("Changes save as you make them").foregroundStyle(.tertiary)
-                    Spacer()
-                    Button("Open settings file") { panel.leave(); NSWorkspace.shared.open(Config.url) }.buttonStyle(.link)
-                }
-                .font(.system(size: 13)).padding(.horizontal, 4)
+                Text("Changes save as you make them").foregroundStyle(.tertiary)
+                    .font(.system(size: 13)).padding(.horizontal, 4)
             }
             .padding(16)
         }
@@ -400,10 +396,20 @@ struct AdvancedPage: View {
                 Text("Deep check sends the text you check to the company behind the AI you pick (Anthropic, OpenAI or Google). Everything else stays on this Mac.")
                     .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 4)
+                // The raw file is for the few who add a bank or block an app; it lives here, not on the everyday page.
+                SectionLabel(text: "Settings file")
+                Group {
+                    Row(label: "Every setting as text", sub: "Including the banks and apps Redpen skips") {
+                        HStack(spacing: 12) {
+                            Button("Open") { panel.leave(); NSWorkspace.shared.open(Config.url) }
+                            Button("Reload") { model.config = Config.load() }
+                        }
+                        .buttonStyle(.link)
+                    }
+                }
                 HStack {
                     Text("Redpen Grammar \(version)").foregroundStyle(.tertiary)
                     Spacer()
-                    Button("Reload settings file") { model.config = Config.load() }.buttonStyle(.link)
                 }
                 .font(.system(size: 13)).padding(.horizontal, 4)
             }
