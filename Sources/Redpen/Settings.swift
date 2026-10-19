@@ -397,6 +397,9 @@ struct AdvancedPage: View {
                             .padding(6).overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.primary.opacity(0.12)))
                     }
                 }
+                Text("Deep check sends the text you check to the company behind the AI you pick (Anthropic, OpenAI or Google). Everything else stays on this Mac.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 4)
                 HStack {
                     Text("Redpen Grammar \(version)").foregroundStyle(.tertiary)
                     Spacer()

@@ -53,7 +53,7 @@ final class WelcomeWindow: NSObject {
         stack.addArrangedSubview(permissionLine)
         engineLine = label("", secondary: true)
         stack.addArrangedSubview(engineLine)
-        stack.addArrangedSubview(label("Redpen never reads password managers, password fields or banking sites. Settings are in the pencil menu at the top of the screen.", size: 12, secondary: true))
+        stack.addArrangedSubview(label("Redpen never reads password managers, password fields, or bank and payment pages it can name from the window title. Settings are in the pencil menu at the top of the screen.", size: 12, secondary: true))
         let done = NSButton(title: "Done", target: self, action: #selector(finish))
         done.bezelStyle = .push
         stack.addArrangedSubview(done)

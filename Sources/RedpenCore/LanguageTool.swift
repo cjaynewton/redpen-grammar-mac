@@ -1,7 +1,7 @@
 import Foundation
 
 /// LanguageTool running on this Mac (brew services, port 8081). Thousands of hand-written grammar rules,
-/// the closest open engine to Grammarly's. Text goes to localhost only.
+/// the closest open engine to Grammarly's. Text goes to this Mac only, and only to a LanguageTool this account runs.
 public enum LanguageTool {
     static let url = URL(string: "http://127.0.0.1:8081/v2/check")!
     /// Rules that are noisy on real writing or duplicate Redpen's own checks.
@@ -27,14 +27,47 @@ public enum LanguageTool {
         let matches: [Match]
     }
 
-    /// True when the server on port 8081 answers as LanguageTool: its language list must decode and include English.
-    /// Any other program that happens to use the port gets no text from Redpen.
+    /// True when the server on port 8081 answers as LanguageTool (its language list must decode and include English)
+    /// and the program listening there belongs to this Mac account. Any other program on the port, including one
+    /// started by another login on the same Mac, gets no text from Redpen.
     public static func isRunning() async -> Bool {
+        guard listenerIsMine() else { return false }
         var req = URLRequest(url: URL(string: "http://127.0.0.1:8081/v2/languages")!, timeoutInterval: 2)
         req.httpMethod = "GET"
         guard let (data, r) = try? await URLSession.shared.data(for: req), (r as? HTTPURLResponse)?.statusCode == 200
         else { return false }
         return looksLikeLanguageTool(data)
+    }
+
+    nonisolated(unsafe) private static var owner: (at: Date, mine: Bool)?
+    private static let ownerLock = NSLock()
+
+    /// Asks lsof who is listening on 127.0.0.1:8081. lsof only sees this account's own programs, so a listener
+    /// owned by anyone else shows up as nobody and fails. A yes is kept for 30 seconds, since checks run several
+    /// times a second while you type; a no for 2, so a grammar engine that is still starting is seen soon.
+    public static func listenerIsMine(now: Date = Date()) -> Bool {
+        ownerLock.lock(); defer { ownerLock.unlock() }
+        if let o = owner, now.timeIntervalSince(o.at) < (o.mine ? 30 : 2) { return o.mine }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+        p.arguments = ["-nP", "-iTCP@127.0.0.1:8081", "-sTCP:LISTEN", "-Fu"]
+        let out = Pipe()
+        p.standardOutput = out
+        p.standardError = FileHandle.nullDevice
+        var mine = false
+        if (try? p.run()) != nil {
+            let data = out.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            mine = ownerIsMe(String(decoding: data, as: UTF8.self))
+        }
+        owner = (now, mine)
+        return mine
+    }
+
+    /// lsof's -F output names each listener's owner on a "u<uid>" line; every listener must be this account.
+    public static func ownerIsMe(_ lsof: String, uid: uid_t = getuid()) -> Bool {
+        let uids = lsof.split(separator: "\n").filter { $0.hasPrefix("u") }.map { String($0.dropFirst()) }
+        return !uids.isEmpty && uids.allSatisfy { $0 == String(uid) }
     }
 
     /// LanguageTool's /v2/languages answer: a list of languages that includes English.

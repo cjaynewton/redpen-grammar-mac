@@ -29,9 +29,17 @@ final class DeepCheck {
         // Only the newest request may fill the window; an older one finishing late is dropped.
         request += 1
         let id = request
+        let email = mode == .email
         Task.detached {
             // On Automatic, finding who is signed in starts helper programs, so it happens here, off the main thread.
-            let result = DeepCheck.call(DeepCheck.job(config, prompt: prompt, input: text))
+            var c = config
+            c.deepCheckWith = config.resolvedDeepWith()
+            let who = Config.name(c.deepCheckWith), company = Config.company(c.deepCheckWith)
+            // Say where the text is going before it goes.
+            let asking = (email ? "Asking \(who) to rewrite this as an email\u{2026}" : "Asking \(who)\u{2026}")
+                + "\n\nDeep check sends this text to \(company), through your \(who) plan. Nothing else Redpen does leaves your Mac."
+            await MainActor.run { if id == self.request { self.show(asking) } }
+            let result = DeepCheck.call(DeepCheck.job(c, prompt: prompt, input: text))
             await MainActor.run { if id == self.request { self.show(result) } }
         }
     }

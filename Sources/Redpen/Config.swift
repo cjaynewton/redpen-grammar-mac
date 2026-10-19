@@ -7,10 +7,8 @@ struct Config: Codable {
     /// Apps Redpen never reads.
     var excludedApps = ["com.1password.1password", "com.agilebits.onepassword7", "com.apple.keychainaccess",
                         "com.apple.Passwords"]
-    /// Browser windows whose title contains one of these are never read (banking).
-    var excludedTitleWords = ["bank", "banking", "RBC", "Royal Bank", "TD ", "EasyWeb", "Scotiabank", "BMO", "CIBC",
-                              "Tangerine", "Simplii", "Wealthsimple", "Questrade", "PayPal", "Amex", "American Express",
-                              "Desjardins", "National Bank", "EQ Bank", "Interac"]
+    /// Browser windows whose title names a bank, card company, broker or payment app are never read.
+    var excludedTitleWords = MoneyPages.titleWords
     /// Long-form apps also get the container-word check. Any text over 600 characters gets it too.
     var longformApps = ["com.microsoft.Word", "com.apple.mail", "com.apple.iWork.Pages", "com.microsoft.Outlook",
                         "com.apple.TextEdit", "md.obsidian", "com.apple.Notes"]
@@ -50,6 +48,8 @@ struct Config: Codable {
     /// Shown in menus and messages: "Claude", "ChatGPT" or "Gemini".
     var deepCheckName: String { Config.name(deepCheckWith) }
     static func name(_ who: String) -> String { who == "chatgpt" ? "ChatGPT" : who == "gemini" ? "Gemini" : "Claude" }
+    /// The company that receives the text when Deep check uses this helper.
+    static func company(_ who: String) -> String { who == "chatgpt" ? "OpenAI" : who == "gemini" ? "Google" : "Anthropic" }
 
     /// The helper Deep check will use: the chosen one, or on "auto" the first signed in of Claude, ChatGPT, Gemini.
     /// The sign-in checks start helper programs, so call this off the main thread.
@@ -98,8 +98,10 @@ struct Config: Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = Config()
         enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? d.enabled
-        excludedApps = try c.decodeIfPresent([String].self, forKey: .excludedApps) ?? d.excludedApps
-        excludedTitleWords = try c.decodeIfPresent([String].self, forKey: .excludedTitleWords) ?? d.excludedTitleWords
+        // Privacy lists keep what a file added and gain every entry a newer version adds, so an older
+        // settings file never misses a newly protected app or bank.
+        excludedApps = Config.merged(try c.decodeIfPresent([String].self, forKey: .excludedApps), d.excludedApps)
+        excludedTitleWords = Config.merged(try c.decodeIfPresent([String].self, forKey: .excludedTitleWords), d.excludedTitleWords)
         longformApps = try c.decodeIfPresent([String].self, forKey: .longformApps) ?? d.longformApps
         terminalApps = try c.decodeIfPresent([String].self, forKey: .terminalApps) ?? d.terminalApps
         chromiumApps = try c.decodeIfPresent([String].self, forKey: .chromiumApps) ?? d.chromiumApps
@@ -115,6 +117,12 @@ struct Config: Codable {
         cardAppearance = try c.decodeIfPresent(String.self, forKey: .cardAppearance) ?? d.cardAppearance
         cardStyle = try c.decodeIfPresent(String.self, forKey: .cardStyle) ?? d.cardStyle
         calm = try c.decodeIfPresent(Bool.self, forKey: .calm) ?? !welcomed
+    }
+
+    static func merged(_ saved: [String]?, _ defaults: [String]) -> [String] {
+        guard let saved else { return defaults }
+        let have = Set(saved.map { $0.trimmingCharacters(in: .whitespaces).lowercased() })
+        return saved + defaults.filter { !have.contains($0.lowercased()) }
     }
 
     static var url: URL {
@@ -139,5 +147,6 @@ struct Config: Codable {
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         try? enc.encode(self).write(to: Config.url)
+        Private.lock(Config.url)
     }
 }

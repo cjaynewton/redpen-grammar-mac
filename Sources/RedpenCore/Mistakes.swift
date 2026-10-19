@@ -39,6 +39,7 @@ public final class Mistakes: @unchecked Sendable {
             h.seekToEndOfFile(); h.write(line); try? h.close()
         } else {
             try? line.write(to: url)
+            Private.lock(url)
         }
     }
 

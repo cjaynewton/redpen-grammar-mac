@@ -292,6 +292,17 @@ func safetyChecks() {
     check("the typo's own place is used, not an earlier word that contains it",
           Spelling.sentence(around: NSRange(location: typo.location, length: 3), in: home)?.1 == typo.location)
 
+
+    // Privacy (Oct 19 2026): bank and payment pages are skipped by whole word, and only this account's engine gets text.
+    check("a US bank page is skipped", MoneyPages.isMoneyPage("Chase Online - Sign in"))
+    check("a UK bank page is skipped", MoneyPages.isMoneyPage("Barclays | Log in"))
+    check("an old saved \u{201C}TD \u{201D} with a space still matches", MoneyPages.isMoneyPage("TD EasyWeb", words: ["TD "]))
+    check("\u{201C}purchase\u{201D} is not Chase", !MoneyPages.isMoneyPage("Your purchase order - Google Docs"))
+    check("an ordinary page is read", !MoneyPages.isMoneyPage("Quarterly plan - Google Docs"))
+    check("an engine run by this account is trusted", LanguageTool.ownerIsMe("p1127\nu501\nf138\n", uid: 501))
+    check("an engine run by another login is not", !LanguageTool.ownerIsMe("p1127\nu502\nf138\n", uid: 501))
+    check("no engine seen is not trusted", !LanguageTool.ownerIsMe("", uid: 501))
+
     print(failed == 0 ? "safety checks: all pass" : "safety checks: \(failed) failed")
     if failed > 0 { exit(1) }
 }
@@ -321,6 +332,11 @@ func contextChecks() async {
         if ok { right += 1 }
         print(ok ? "  pass" : hit == nil ? "  MISS" : "  WRONG", f[1], "->", hit.map { "\($0.original) -> \(first)" } ?? "not flagged")
     }
+    // The live engine must pass the owner check and still answer (Oct 19 2026). Skipped when it isn't running.
+    if LanguageTool.listenerIsMine() {
+        let live = await LanguageTool.checkIfReady("They was late again.")
+        print(live?.isEmpty == false ? "  pass the grammar engine on this Mac answers" : "  FAIL the grammar engine on this Mac answers")
+    } else { print("  skip the grammar engine isn't running for this account") }
     print("context spelling: \(flagged)/\(total) flagged, \(right)/\(total) first suggestion right")
 }
 

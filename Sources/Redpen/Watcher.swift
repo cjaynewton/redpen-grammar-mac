@@ -183,7 +183,7 @@ final class Watcher {
         let subrole: String = AX.attr(el, kAXSubroleAttribute) ?? ""
         if subrole == (kAXSecureTextFieldSubrole as String) || role == "AXSecureTextField" { clear(); return }
         if let win = AX.element(appEl, kAXFocusedWindowAttribute), let title: String = AX.attr(win, kAXTitleAttribute),
-           config.excludedTitleWords.contains(where: { title.localizedCaseInsensitiveContains($0) }) { clear(); return }
+           MoneyPages.isMoneyPage(title, words: config.excludedTitleWords) { clear(); return }
 
         var settable: DarwinBoolean = false
         AXUIElementIsAttributeSettable(el, kAXValueAttribute as CFString, &settable)
@@ -343,7 +343,7 @@ final class Watcher {
         guard panel.isVisible, let open = cardMark else { return }
         let now = marks.first(where: { $0.issue == open.issue })?.rect
         if now == nil || abs(now!.minX - open.rect.minX) > 3 || abs(now!.minY - open.rect.minY) > 3 {
-            Log.note("card closed: \u{201C}\(open.issue.original)\u{201D} \(now == nil ? "is gone" : "moved")")
+            Log.note("card closed: \(open.issue.kind) mistake \(now == nil ? "is gone" : "moved")")
             panel.hide()
             cardMark = nil
         }
@@ -380,7 +380,7 @@ final class Watcher {
             ?? lineRects(el, issue.range).first.map(AX.toCocoa)
             ?? AX.frame(el).map { f in let c = AX.toCocoa(f); return CGRect(x: c.minX + 8, y: c.minY, width: 1, height: 1) }
         guard let anchor else { Log.note("shortcut: no place to open the card"); NSSound.beep(); return }
-        Log.note("shortcut: opened \u{201C}\(issue.original)\u{201D} in \(bundleID)\(marks.contains { $0.issue == issue } ? "" : " (under the field)")")
+        Log.note("shortcut: opened a \(issue.kind) mistake in \(bundleID)\(marks.contains { $0.issue == issue } ? "" : " (under the field)")")
         cardMark = marks.first(where: { $0.issue == issue })
         open(issue, in: el, anchor: anchor)
     }
@@ -395,7 +395,7 @@ final class Watcher {
         let action = CardPlacement.onClick(cardOpen: panel.isVisible, hit: hit != nil, hitSame: hit != nil && hit?.issue == cardMark?.issue)
         if element != nil || !marks.isEmpty {
             let near = marks.prefix(3).map { "\(Int($0.rect.minX)),\(Int($0.rect.minY)) \(Int($0.rect.width))x\(Int($0.rect.height))" }
-            Log.note("click at \(Int(p.x)),\(Int(p.y)) in \(bundleID): \(marks.count) underlines, \(hit == nil ? "none hit" : "hit \u{201C}\(hit!.issue.original)\u{201D}"), field \(element == nil ? "gone" : "held"), card \(action) [\(near.joined(separator: "; "))]")
+            Log.note("click at \(Int(p.x)),\(Int(p.y)) in \(bundleID): \(marks.count) underlines, \(hit == nil ? "none hit" : "hit a \(hit!.issue.kind) mistake"), field \(element == nil ? "gone" : "held"), card \(action) [\(near.joined(separator: "; "))]")
         }
         switch action {
         case .ignore, .keep: return
@@ -424,7 +424,7 @@ final class Watcher {
         // Build the card from the issue as it stands now, so its suggestions are never from older text.
         guard let issue = all.first(where: { $0.range == incoming.range && $0.original == incoming.original && $0.kind == incoming.kind })
                 .map({ fresh -> Issue in var f = fresh; if f.replacements.isEmpty { f.replacements = incoming.replacements }; return f }) else {
-            Log.note("card: \u{201C}\(incoming.original)\u{201D} is no longer a mistake"); return
+            Log.note("card: that \(incoming.kind) mistake is gone"); return
         }
         let reps = issue.replacements.prefix(3).map { $0 }
         func shown(_ rep: String) -> String {
