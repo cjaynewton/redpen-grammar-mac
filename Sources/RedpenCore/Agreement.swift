@@ -98,8 +98,9 @@ enum Agreement {
             // "need not" and "do not" after a plural phrase are not the common slip; "do n't" is.
             return (j, fix)
         }
-        guard v.tag == .verb, v.lemma == v.lower, !Splices.auxiliaries.contains(v.lower), !Splices.reporting.contains(v.lower),
-              !pastForms.contains(v.lower), !v.lower.hasSuffix("ing"), !v.lower.hasSuffix("ed"), v.lower.count >= 3 else { return nil }
+        // Plain form only: not "-ing", not a past form ("ordered", but "need" and "succeed" are plain forms).
+        guard v.tag == .verb, v.lemma == v.lower, !Splices.auxiliaries.contains(v.lower), !pastForms.contains(v.lower),
+              !v.lower.hasSuffix("ing"), !v.lower.hasSuffix("ed") || v.lower.hasSuffix("eed"), v.lower.count >= 3 else { return nil }
         // The word after must read as an object or a pause, so "the price list" is never read as "the price lists".
         if j + 1 < toks.count {
             let n = toks[j + 1]
