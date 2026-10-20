@@ -39,6 +39,7 @@ final class Watcher {
     private let walker = MarkerWalker()
     private var lastLoggedCount = -1
     private var enabledPids: Set<pid_t> = []
+    private var reenabledAt: [pid_t: Date] = [:]
     private let ownPid = ProcessInfo.processInfo.processIdentifier
     private var lastBeat = Date.distantPast
     private var beats = 0
@@ -178,7 +179,11 @@ final class Watcher {
             lastContainer = f; lastInner = inner  // walking Word's tree every tick would be slow
             found = inner
         }
-        guard let el = found else { Log.note("\(bid): no focused element (AX error \(err.rawValue))"); lost(app.processIdentifier); return }
+        guard let el = found else {
+            Log.note("\(bid): no focused element (AX error \(err.rawValue))")
+            if err == .noValue { reenableAccessibility(appEl, pid: app.processIdentifier, bundleID: bid) }
+            lost(app.processIdentifier); return
+        }
         let role: String = AX.attr(el, kAXRoleAttribute) ?? ""
         let subrole: String = AX.attr(el, kAXSubroleAttribute) ?? ""
         if subrole == (kAXSecureTextFieldSubrole as String) || role == "AXSecureTextField" { clear(); return }
@@ -665,6 +670,16 @@ final class Watcher {
         if config.chromiumApps.contains(bundleID) || config.officeApps.contains(bundleID) {
             AX.set(appEl, "AXEnhancedUserInterface", kCFBooleanTrue)  // Chrome, Brave, Edge, Arc, Office
         }
+    }
+
+    /// An Electron app can drop its accessibility tree while it keeps running (Claude's desktop app does after
+    /// a reload), and then answers that nothing has focus. Asking again brings the text back. At most every 5 seconds.
+    private func reenableAccessibility(_ appEl: AXUIElement, pid: pid_t, bundleID: String) {
+        if let last = reenabledAt[pid], Date().timeIntervalSince(last) < 5 { return }
+        reenabledAt[pid] = Date()
+        enabledPids.remove(pid)
+        enableAccessibility(appEl, pid: pid, bundleID: bundleID)
+        Log.note("\(bundleID): asked again for its text")
     }
 
     /// One line for the menu panel: which app Redpen is reading and how many mistakes it can see.
