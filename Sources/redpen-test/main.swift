@@ -85,6 +85,8 @@ func run() async {
         }
     }
     let cleanTotal = cases.filter { $0.expect == nil }.count
+    // `--quick`: the instant layer only (Mac dictionary and the hand-written rules), for working on a rule.
+    let quick = CommandLine.arguments.contains("--quick")
     if #available(macOS 26, *) { print("Apple model available:", AppleModel.isAvailable) } else { print("Apple model available: false (needs macOS 26)") }
     var caught: [String: (Int, Int)] = [:]
     var falsePos = 0
@@ -94,7 +96,7 @@ func run() async {
     var totalTime = 0.0
     for c in cases {
         let t = Date()
-        let issues = await Engine.full(c.text, longform: true, style: .example)
+        let issues = quick ? Engine.quick(c.text, longform: true, style: .example) : await Engine.full(c.text, longform: true, style: .example)
         totalTime += Date().timeIntervalSince(t)
         let ns = c.text as NSString
         var hit = false

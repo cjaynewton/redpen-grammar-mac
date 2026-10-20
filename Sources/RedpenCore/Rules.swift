@@ -78,46 +78,10 @@ public enum Rules {
     static let meAnd = try! NSRegularExpression(pattern: "(?:^|(?<=[.!?]\\s))(Me and ([A-Z][a-z]+|(?:the|my|our|your|his|her|their) [a-z]+))\\b(?=\\s+[a-z]+(?:ed|s)?\\b)")
     static let eachHave = try! NSRegularExpression(pattern: "\\b(?:Each|Every one|Neither|Either) of (?:the |our |their |these |those )?\\w+ (have|are|were|do|don't)\\b", options: [.caseInsensitive])
 
-    // Two full sentences joined by a comma: "The buyer called, she wants the samples."
-    static let splice = try! NSRegularExpression(pattern: ", (I|you|he|she|it|we|they) (?!and\\b|but\\b|or\\b)[a-z']+")
-    static let openers: Set<String> = ["if", "when", "while", "because", "although", "though", "since", "after", "before",
-        "as", "unless", "until", "once", "whenever", "where", "wherever", "whether", "even", "in", "on", "at", "for",
-        "with", "by", "during", "from", "to", "of", "over", "under", "without", "yes", "no", "well", "so", "now", "then",
-        "however", "still", "also", "and", "but", "or", "honestly", "frankly", "first", "second", "finally", "today",
-        "yesterday", "tomorrow", "here", "there", "please", "thanks", "ok", "okay", "sure", "oh", "hi", "hey", "dear"]
-
-    static let timeWords: Set<String> = ["year", "years", "month", "months", "week", "weeks", "day", "days", "morning",
-        "night", "season", "seasons", "decade", "decades", "spring", "summer", "fall", "autumn", "winter", "quarter", "time"]
-
-    static func spliceIssues(_ text: String) -> [Issue] {
-        var out: [Issue] = []
-        text.enumerateSubstrings(in: text.startIndex..., options: .bySentences) { s, sr, _, _ in
-            guard let s else { return }
-            let sns = s as NSString
-            let base = NSRange(sr, in: text).location
-            for m in splice.matches(in: s, range: NSRange(location: 0, length: sns.length)) {
-                // ", he argued," is an aside, not a second sentence.
-                if NSMaxRange(m.range) < sns.length, sns.character(at: NSMaxRange(m.range)) == 44 { continue }
-                let before = sns.substring(to: m.range.location)
-                let words = before.split(whereSeparator: { $0 == " " }).map { $0.lowercased().trimmingCharacters(in: .punctuationCharacters) }
-                // "The following year, they won": a time phrase introducing the sentence, not a second sentence.
-                let timeIntro = words.count <= 4 && words.last.map { timeWords.contains($0) } == true
-                guard words.count >= 3, let first = words.first, !openers.contains(first), !first.hasSuffix("ing"), !timeIntro,
-                      !before.contains(",") else { continue }
-                let pronoun = sns.substring(with: m.range(at: 1))
-                let span = NSRange(location: base + m.range.location, length: 2 + (pronoun as NSString).length)
-                let cap = pronoun == "I" ? "I" : pronoun.prefix(1).uppercased() + pronoun.dropFirst()
-                out.append(Issue(range: span, kind: .grammar, message: "Two sentences joined by a comma. Make it a period.",
-                                 replacements: [". " + cap], original: (text as NSString).substring(with: span)))
-            }
-        }
-        return out
-    }
-
     static func patternIssues(_ text: String) -> [Issue] {
         let ns = text as NSString
         let full = NSRange(location: 0, length: ns.length)
-        var out: [Issue] = spliceIssues(text) + Advanced.subjunctiveIssues(text) + Advanced.hyphenIssues(text)
+        var out: [Issue] = Splices.issues(text) + Advanced.subjunctiveIssues(text) + Advanced.hyphenIssues(text)
         for m in meAnd.matches(in: text, range: full) {
             let raw = ns.substring(with: m.range(at: 2)); let name = raw.prefix(1).uppercased() + raw.dropFirst()
             out.append(Issue(range: m.range(at: 1), kind: .grammar, message: "Use \"\(name) and I\" as the subject",
