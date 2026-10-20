@@ -82,10 +82,40 @@ public enum Rules {
     // "to you and she", "invited Maya and I": after a preposition or a verb, the pronoun takes its object form.
     static let objectForm = ["I": "me", "he": "him", "she": "her", "we": "us", "they": "them"]
     static let andI = try! NSRegularExpression(pattern:
-        "\\b([a-z]+) ((?:[A-Z][a-z]+|me|you|him|her|us|them) and )(I|he|she|we|they)\\b(?=\\s*(?:[.,!?;:]|$|(?:to|that|about|for|in|at|on|the|a|an|some|our|your|his|her|their|my|its|this|these|those|how|what|when|where|why|whether|if|everything|something|nothing|anything|more|enough|one|two|three|\\d)\\b))")
+        "\\b([a-z]+) ((?:[A-Z][a-z]+|me|you|him|her|us|them|(?:the|my|our|your|his|her|their|this|that) [a-z]+(?: [a-z]+)?) and )(I|he|she|we|they)\\b(?=\\s*(?:[.,!?;:]|$|(?:to|that|about|for|in|at|on|the|a|an|some|our|your|his|her|their|my|its|this|these|those|how|what|when|where|why|whether|if|everything|something|nothing|anything|more|enough|one|two|three|\\d)\\b))")
     static let prepositions: Set<String> = ["to", "for", "with", "from", "between", "at", "by", "of", "about", "without",
         "against", "among", "toward", "towards", "behind", "beside", "near", "unlike", "upon", "onto", "into", "via",
         "despite", "regarding", "concerning", "after", "before", "beyond", "except", "including"]
+    // "Him approved the budget", "Her will brief the team": a subject in its object form at the start of a sentence.
+    static let objectSubject = try! NSRegularExpression(pattern:
+        "(?:^|(?<=[.!?]\\s))(?:(Me|Him|Us|Them)(?= (?:will|would|can|could|should|must|might|may|shall|did|does|has|have|had|was|were|is|are|am|[a-z]+ed)\\b)|(Her)(?= (?:will|would|can|could|should|must|might|may|shall) (?!be\\b)[a-z]+\\b))")
+    static let subjectForm = ["Me": "I", "Him": "He", "Her": "She", "Us": "We", "Them": "They"]
+    // "send it to I", "a briefing for they before": a subject pronoun alone after a preposition or a verb, then a pause
+    // or the next phrase. Only "I" is ever capitalised, so a name or a heading never matches.
+    static let loneSubject = try! NSRegularExpression(pattern:
+        "\\b([a-z]+) (I|he|she|we|they)\\b(?=\\s*(?:[.,!?;:]|$|(?:the|a|an|our|your|his|her|their|my|this|that|these|those|about|before|after|at|on|in|with|for|to|from|until|tomorrow|today|tonight)\\b))")
+
+    // "We have too interviews booked": "too" never comes right before a plural noun, so the number was meant.
+    // "two much", "two late.": "two" never comes before "much" or a describing word that ends the phrase.
+    static let tooTwo = try! NSRegularExpression(pattern: "\\b([Tt]oo) ([a-z]+s)\\b")
+    static let twoToo = try! NSRegularExpression(pattern:
+        "\\b([Tt]wo) (?:much|many|(?:late|early|soon|far|long|busy|expensive|cheap|small|big|high|low|hot|cold|slow|fast|often|little)(?=\\s*(?:[.,!?;:]|$|(?:to|for|and|or|but|so)\\b)))\\b")
+
+    // "Our distributor agreed collect the cases", "remind the new cashier submit her details": verbs that need "to"
+    // before the next verb. Only a plain verb followed by its own object counts, so "plans review sessions" is safe.
+    static let wantsTo = "(?:agree|agreed|agrees|plan|planned|plans|hope|hoped|hopes|decide|decided|decides|try|tried|tries|attempt|attempted|manage|managed|fail|failed|refuse|refused|promise|promised|intend|intended|intends|aim|aimed|prepare|prepared|arrange|arranged|would like|'d like|\u{2019}d like|want|wants|wanted|need|needs|needed|forget|forgot|remember|remembered|choose|chose|seem|seemed|seems|deserve|deserved|afford|hesitate|expect|expected|expects|wish|wished|offer|offered|threaten|threatened|neglect|neglected)"
+    static let wantsObjectTo = "(?:would like|'d like|\u{2019}d like|want|wants|wanted|need|needs|needed|ask|asks|asked|remind|reminds|reminded|tell|tells|told|expect|expects|expected|allow|allows|allowed|encourage|encourages|encouraged|invite|invites|invited|require|requires|required|urge|urged|advise|advised|instruct|instructed|persuade|persuaded|force|forced|get|got|teach|taught)"
+    static let missingTo = try! NSRegularExpression(pattern:
+        "\\b(?:\(wantsTo)|\(wantsObjectTo) (?:me|you|him|her|us|them|[A-Z][a-z]+|(?:the|our|your|my|his|her|their|this|that|each|every) (?:(?!(?:to|and|or|but|that|not|never)\\b)[a-z]+ ){0,2}(?!(?:to|and|or|but|that)\\b)[a-z]+)) ([a-z]+)(?= (?:the|a|an|our|your|my|his|her|their|its|this|that|these|those|it|them|us|me|him)\\b)")
+    static let notBare: Set<String> = Splices.auxiliaries.union(["be", "been", "not", "never", "always", "also", "just",
+        "really", "only", "even", "still", "already", "all", "both", "back", "out", "up", "off", "in", "on", "over",
+        "about", "for", "with", "from", "into", "help", "please", "and", "or", "but", "so", "that", "than", "if"])
+
+    // "arrived to our shop": arriving is at a place. "arrived to find" is fine, so only before a place's determiner.
+    static let arriveTo = try! NSRegularExpression(pattern: "\\b(?:arrive|arrives|arrived|arriving) (to)(?= (?:the|our|your|a|an|my|his|her|their|this|that)\\b)", options: [.caseInsensitive])
+    // "let me checked the stock": after let, make or help someone, the plain verb.
+    static let letPast = try! NSRegularExpression(pattern: "\\b(?:let|lets|make|makes|help|helps) (?:me|us|him|her|them|you) ([a-z]+ed)(?= (?:the|a|an|our|your|my|his|her|their|this|that|these|those|it|them)\\b)", options: [.caseInsensitive])
+
     /// Verbs that take a whole clause, where "I" is right: "I hope Maya and I can go".
     static let clauseVerbs: Set<String> = Splices.reporting.union(["wish", "wished", "knew", "hoped", "guessed", "meant",
         "assumed", "supposed", "felt", "realised", "realized", "noticed", "remember", "remembered", "forget", "forgot",
@@ -100,6 +130,9 @@ public enum Rules {
         ("insist", ["for", "in", "to"], "on"), ("insisted", ["for", "in", "to"], "on"), ("depend", ["of", "in", "from"], "on"),
         ("depends", ["of", "in", "from"], "on"), ("consist", ["in", "from"], "of"), ("consists", ["in", "from"], "of"),
         ("capable", ["to", "for"], "of"), ("responsible", ["of", "on"], "for"), ("afraid", ["from", "for"], "of"),
+        ("comply", ["to"], "with"), ("complies", ["to"], "with"), ("complied", ["to"], "with"), ("complying", ["to"], "with"),
+        ("similar", ["with"], "to"), ("aware", ["about"], "of"), ("superior", ["than"], "to"), ("inferior", ["than"], "to"),
+        ("refer", ["at", "on"], "to"), ("refers", ["at", "on"], "to"), ("referred", ["at", "on"], "to"),
         ("married", ["with"], "to"), ("listen", ["at"], "to"), ("listened", ["at"], "to"), ("entitled", ["a", "an", "the", "one"], "to"),
     ]
     static let collocationRegex: NSRegularExpression = {
@@ -111,12 +144,25 @@ public enum Rules {
     static let owned = "(?:latest|newest|own|first|next|last|final|revised|updated|current|favourite|favorite|main|usual|previous|original|entire|whole|upcoming|existing|new|old|recent|monthly|weekly|annual|yearly|daily)"
     static let contractedOwner = try! NSRegularExpression(pattern: "\\b(you['\u{2019}]re|they['\u{2019}]re|we['\u{2019}]re|it['\u{2019}]s) \(owned) [a-z]+\\b(?! (?:is|are|was|were|and|or|but|to|for|of|in|on|at|with|by|from|as|than|so|that|if|when|because)\\b)", options: [.caseInsensitive])
     static let ownerForm = ["you're": "your", "they're": "their", "we're": "our", "it's": "its"]
+    // "add you're initials", "replacing it's damaged trim": right after a verb that takes a thing, or a preposition,
+    // only an owner fits, so the contraction is wrong. Then a noun, or one describing word and a noun, must follow.
+    static let contractionAsObject = try! NSRegularExpression(pattern:
+        "\\b([a-z]+) ((?:you|they|we|it)['\u{2019}](?:re|s)) (?:([a-z]+) )?([a-z]+)\\b")
+    static let notObjectVerbs: Set<String> = clauseVerbs.union(Splices.reporting).union(Splices.auxiliaries).union(["show",
+        "shows", "showed", "prove", "proves", "proved", "suggest", "suggests", "suggested", "mean", "means", "meant",
+        "find", "finds", "found", "hear", "heard", "learn", "learned", "learnt", "see", "saw", "seen", "ensures",
+        "indicate", "indicates", "indicated", "explain", "explains", "explained", "let", "make", "makes", "made",
+        "imagine", "bet", "trust", "say", "says", "tell", "tells", "told", "check", "confirm", "note", "notice",
+        "figure", "guarantee", "promise", "swear", "warn", "warned", "reckon", "show", "worry", "worried", "care"])
+    /// Words that open a clause: "When you arrive it's time" may have dropped its comma, so the verb ends a clause.
+    static let clauseOpeners: Set<String> = ["if", "when", "once", "after", "before", "until", "as", "because", "while",
+        "since", "unless", "whenever", "though", "although", "where", "what", "how", "why", "who", "whatever", "however"]
 
     static func patternIssues(_ text: String) -> [Issue] {
         let ns = text as NSString
         let full = NSRange(location: 0, length: ns.length)
         var out: [Issue] = Splices.issues(text) + Advanced.subjunctiveIssues(text) + Advanced.hyphenIssues(text)
-        for i in Agreement.issues(text) where !out.contains(where: { $0.range.overlaps(i.range) }) { out.append(i) }
+        for i in Agreement.issues(text) + Apostrophes.issues(text) + Confused.issues(text) where !out.contains(where: { $0.range.overlaps(i.range) }) { out.append(i) }
         for m in meAnd.matches(in: text, range: full) {
             let raw = ns.substring(with: m.range(at: 2)); let name = raw.prefix(1).uppercased() + raw.dropFirst()
             out.append(Issue(range: m.range(at: 1), kind: .grammar, message: "Use \"\(name) and I\" as the subject",
@@ -138,6 +184,42 @@ public enum Rules {
             out.append(Issue(range: span, kind: .grammar, message: "After \u{201C}\(before)\u{201D} the pronoun is \u{201C}\(fix)\u{201D}: \u{201C}\(pair)\u{201D}.",
                              replacements: [pair], original: ns.substring(with: span)))
         }
+        for m in objectSubject.matches(in: text, range: full) {
+            let r = m.range(at: 1).location != NSNotFound ? m.range(at: 1) : m.range(at: 2)
+            let word = ns.substring(with: r)
+            guard let fix = subjectForm[word], !out.contains(where: { $0.range.overlaps(r) }) else { continue }
+            out.append(Issue(range: r, kind: .grammar, message: "As the subject the pronoun is \u{201C}\(fix)\u{201D}.",
+                             replacements: [fix], original: word))
+        }
+        for m in loneSubject.matches(in: text, range: full) {
+            let before = ns.substring(with: m.range(at: 1)).lowercased()
+            let r = m.range(at: 2)
+            let pronoun = ns.substring(with: r)
+            // "for he was tired" and "after we left" are clauses; a verb that takes a clause ("said he", "knew they")
+            // or a helper ("did they", "will we") is not an object slot.
+            let takesObject = prepositions.contains(before) && !["after", "before", "except", "including"].contains(before)
+                || !clauseVerbs.contains(before) && !Splices.auxiliaries.contains(before) && !Splices.reporting.contains(before)
+                    && before != "let" && isVerb(at: m.range(at: 1).location, in: text)
+            guard takesObject, let fix = objectForm[pronoun], !out.contains(where: { $0.range.overlaps(r) }) else { continue }
+            out.append(Issue(range: r, kind: .grammar, message: "After \u{201C}\(before)\u{201D} the pronoun is \u{201C}\(fix)\u{201D}.",
+                             replacements: [fix], original: pronoun))
+        }
+        for m in tooTwo.matches(in: text, range: full) where isPluralNoun(at: m.range(at: 2).location, in: text) {
+            let r = m.range(at: 1), word = ns.substring(with: r)
+            let fix = word.first == "T" ? "Two" : "two"
+            out.append(Issue(range: r, kind: .grammar, message: "The number is \u{201C}\(fix)\u{201D}.", replacements: [fix], original: word))
+        }
+        for m in twoToo.matches(in: text, range: full) {
+            let r = m.range(at: 1), word = ns.substring(with: r)
+            let fix = word.first == "T" ? "Too" : "too"
+            out.append(Issue(range: r, kind: .grammar, message: "More than enough is \u{201C}\(fix)\u{201D}.", replacements: [fix], original: word))
+        }
+        for m in missingTo.matches(in: text, range: full) where !out.contains(where: { $0.range.overlaps(m.range(at: 1)) }) {
+            let r = m.range(at: 1), verb = ns.substring(with: r)
+            guard !notBare.contains(verb), isPlainVerb(at: r.location, in: text) else { continue }
+            out.append(Issue(range: r, kind: .grammar, message: "This verb needs \u{201C}to\u{201D} before it: \u{201C}to \(verb)\u{201D}.",
+                             replacements: ["to " + verb], original: verb))
+        }
         let singular = ["have": "has", "are": "is", "were": "was", "do": "does", "don't": "doesn't"]
         for m in eachHave.matches(in: text, range: full) where !out.contains(where: { $0.range.overlaps(m.range(at: 1)) }) {
             let v = ns.substring(with: m.range(at: 1))
@@ -152,6 +234,41 @@ public enum Rules {
             out.append(Issue(range: r, kind: .grammar, message: "Something is owned here: \u{201C}\(fix)\u{201D}.",
                              replacements: [fix], original: word))
         }
+        for m in contractionAsObject.matches(in: text, range: full) where !out.contains(where: { $0.range.overlaps(m.range(at: 2)) }) {
+            let before = ns.substring(with: m.range(at: 1))
+            let objectSlot = !notObjectVerbs.contains(before) && !clauseOpeners.contains(before)
+                && (prepositions.contains(before) && !["after", "before", "except", "including"].contains(before)
+                    || isVerb(at: m.range(at: 1).location, in: text))
+            // The thing owned: "you're initials", "you're preferred time", or "it's damaged trim." at the end of the
+            // sentence, where the tagger often reads the last word as a verb. "it's time" is left alone.
+            let mid = m.range(at: 3), last = m.range(at: 4)
+            let endsPhrase = NSMaxRange(last) == ns.length || ".,;:!?".contains(ns.substring(with: NSRange(location: NSMaxRange(last), length: 1)))
+            let owned = mid.location == NSNotFound ? nounAt(last.location, in: text) && ns.substring(with: last) != "time"
+                : nounAt(mid.location, in: text) ? ns.substring(with: mid) != "time"
+                : nounAt(last.location, in: text) || endsPhrase
+            guard objectSlot, owned else { continue }
+            // "When you finish you're done": a clause opener earlier in the sentence with no comma since.
+            let lead = ns.substring(to: m.range.location)
+            let sentence = lead.components(separatedBy: CharacterSet(charactersIn: ".!?\n")).last ?? lead
+            let sinceComma = sentence.components(separatedBy: ",").last ?? sentence
+            if sinceComma.lowercased().split(whereSeparator: { !$0.isLetter }).contains(where: { clauseOpeners.contains(String($0)) }) { continue }
+            let r = m.range(at: 2), word = ns.substring(with: r)
+            guard var fix = ownerForm[word.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")] else { continue }
+            if word.first?.isUppercase == true { fix = fix.prefix(1).uppercased() + fix.dropFirst() }
+            out.append(Issue(range: r, kind: .grammar, message: "Something is owned here: \u{201C}\(fix)\u{201D}.",
+                             replacements: [fix], original: word))
+        }
+        for m in arriveTo.matches(in: text, range: full) {
+            let r = m.range(at: 1)
+            out.append(Issue(range: r, kind: .grammar, message: "\u{201C}Arrive\u{201D} takes \u{201C}at\u{201D}: \u{201C}arrived at\u{201D}.",
+                             replacements: ["at"], original: ns.substring(with: r)))
+        }
+        for m in letPast.matches(in: text, range: full) {
+            let r = m.range(at: 1), word = ns.substring(with: r)
+            guard let lemma = lemma(at: r.location, in: text), lemma != word.lowercased(), !lemma.isEmpty else { continue }
+            out.append(Issue(range: r, kind: .grammar, message: "After \u{201C}let me\u{201D} the verb is plain: \u{201C}\(lemma)\u{201D}.",
+                             replacements: [lemma], original: word))
+        }
         for m in collocationRegex.matches(in: text, range: full) {
             let phrase = ns.substring(with: m.range)
             let words = phrase.split(separator: " ").map(String.init)
@@ -164,6 +281,43 @@ public enum Rules {
                              replacements: [rep], original: last))
         }
         return out
+    }
+
+    /// Whether the word at `loc` is a verb in its plain form ("collect", not "collects", "collected" or "collecting").
+    static func isPlainVerb(at loc: Int, in text: String) -> Bool {
+        guard let r = Range(NSRange(location: loc, length: 0), in: text) else { return false }
+        let tagger = NLTagger(tagSchemes: [.lexicalClass, .lemma])
+        tagger.string = text
+        let (tag, wr) = tagger.tag(at: r.lowerBound, unit: .word, scheme: .lexicalClass)
+        let w = text[wr].lowercased()
+        guard tag == .verb, !w.hasSuffix("ing"), !w.hasSuffix("ed") || w.hasSuffix("eed"),
+              let lemma = tagger.tag(at: r.lowerBound, unit: .word, scheme: .lemma).0?.rawValue else { return false }
+        return lemma.lowercased() == w
+    }
+
+    static func lemma(at loc: Int, in text: String) -> String? {
+        guard let r = Range(NSRange(location: loc, length: 0), in: text) else { return nil }
+        let tagger = NLTagger(tagSchemes: [.lemma])
+        tagger.string = text
+        return tagger.tag(at: r.lowerBound, unit: .word, scheme: .lemma).0?.rawValue.lowercased()
+    }
+
+    /// Whether the word at `loc` is tagged a noun in its sentence.
+    static func nounAt(_ loc: Int, in text: String) -> Bool {
+        guard let r = Range(NSRange(location: loc, length: 0), in: text) else { return false }
+        let tagger = NLTagger(tagSchemes: [.lexicalClass])
+        tagger.string = text
+        return tagger.tag(at: r.lowerBound, unit: .word, scheme: .lexicalClass).0 == .noun
+    }
+
+    /// Whether the word at `loc` is a plural noun in its sentence: tagged a noun, and its lemma is not the word itself.
+    static func isPluralNoun(at loc: Int, in text: String) -> Bool {
+        guard let r = Range(NSRange(location: loc, length: 0), in: text) else { return false }
+        let tagger = NLTagger(tagSchemes: [.lexicalClass, .lemma])
+        tagger.string = text
+        let (tag, wr) = tagger.tag(at: r.lowerBound, unit: .word, scheme: .lexicalClass)
+        guard tag == .noun, let lemma = tagger.tag(at: r.lowerBound, unit: .word, scheme: .lemma).0?.rawValue else { return false }
+        return lemma.lowercased() != text[wr].lowercased()
     }
 
     /// Whether the word at `loc` reads as a verb in its sentence ("invited Maya and I"), not a noun ("the buyer and I").

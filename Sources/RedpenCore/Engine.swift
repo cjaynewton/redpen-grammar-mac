@@ -13,7 +13,9 @@ public enum Engine {
     @MainActor
     public static func full(_ text: String, longform: Bool, style: HouseStyle = HouseStyle()) async -> [Issue] {
         let lt = await LanguageTool.check(text)
-        var issues = merge(spellingAgreed(Spelling.check(text), lt: lt),
+        // Redpen's own apostrophe fixes go before LanguageTool's on the same words: it offers "managers'" for
+        // "our managers signature" and "vacancys" for "three vacancy's".
+        var issues = merge(merge(spellingAgreed(Spelling.check(text), lt: lt), Apostrophes.issues(text)),
                            protectNames(lt.filter { $0.kind != .spelling }, in: text))
         issues = merge(issues, Spelling.dialect(text, style.spelling))
         issues = merge(issues, Rules.check(text, longform: longform, style: style))

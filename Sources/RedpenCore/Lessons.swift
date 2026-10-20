@@ -47,6 +47,12 @@ public enum Lessons {
         (["past", "passed"], make("past-passed", "past / passed",
             "\u{201C}Passed\u{201D} is the verb (it passed the review). \u{201C}Past\u{201D} is a time or means beyond (walked past).",
             "The brand passed the line review; the past year was hard.")),
+        (["to", "too", "two"], make("to-too-two", "to / too / two",
+            "\u{201C}Two\u{201D} is the number. \u{201C}Too\u{201D} means also, or more than enough. \u{201C}To\u{201D} points somewhere or comes before a verb.",
+            "Send two samples to the buyer, and the price list too.")),
+        (["hear", "here"], make("hear-here", "hear / here",
+            "\u{201C}Hear\u{201D} is what your ears do; it has an ear in it. \u{201C}Here\u{201D} is this place.",
+            "Leave the key here; I can hear the van.")),
         (["further", "farther"], make("further-farther", "further / farther",
             "\u{201C}Farther\u{201D} is physical distance. \u{201C}Further\u{201D} means more, or to a greater degree.",
             "The display was farther from the entrance; we need to talk further.")),
@@ -85,6 +91,21 @@ public enum Lessons {
     static let splice = make("comma-splice", "comma splice",
         "A comma can't join two full sentences. Use a period, or keep the comma and add and, but or so.",
         "The buyer liked the pitch. He asked for a second meeting.")
+
+    static let possessive = make("possessive", "Maya's notes",
+        "When someone owns something, add an apostrophe and s: Maya's notes, the driver's phone. If several people own it, put the apostrophe after the s: the drivers' phones.",
+        "Maya's notes are on the baker's invoice.")
+    static let pluralApostrophe = make("plural-apostrophe", "plurals take no apostrophe",
+        "A plain plural never takes an apostrophe: three cartons, the batteries. The apostrophe is only for owning (the carton's label) or a shortened word (it's).",
+        "We counted three cartons; the batteries are in the drawer.")
+
+    static let missingTo = make("missing-to", "want to, agree to",
+        "Verbs like want, need, agree, plan and remind take \u{201C}to\u{201D} before the next verb: agreed to collect, remind her to send.",
+        "The distributor agreed to collect the cases. Remind the cashier to submit her details.")
+
+    static let preposition = make("preposition", "the word after a verb",
+        "Some words always take the same small word after them: comply with, refer to, arrive at, interested in. Learn them as pairs.",
+        "We comply with the rules and arrived at the shop.")
 
     static let dangling = make("dangling-modifier", "dangling modifier",
         "An opening phrase like \u{201C}Walking into the store,\u{201D} describes whoever comes right after the comma. Put the person who did it there.",
@@ -176,6 +197,10 @@ public enum Lessons {
         }
 
         if msg.contains("two sentences") { return splice }
+        if msg.hasPrefix("something belongs to") { return possessive }
+        if msg.range(of: "\u{201D} takes \u{201C}") != nil { return preposition }
+        if msg.hasPrefix("this verb needs \u{201C}to\u{201D}") || replacement == "to " + original { return missingTo }
+        if msg.hasPrefix("more than one, so no apostrophe") { return pluralApostrophe }
         if msg.contains("verb agrees with") { return agreement }
         if msg.contains("double negative") { return doubleNegative }
         if msg.hasPrefix("dangling modifier") { return dangling }
@@ -242,7 +267,7 @@ public enum Lessons {
 
     /// Fixed lessons by id, for the patterns page. Spelling and confused-pair lessons are rebuilt from the id.
     public static func byID(_ id: String) -> Lesson? {
-        let fixed = pairs.map(\.1) + [pronounCase, agreement, tense, fewer, doubleNegative, splice, canadian, dangling, subjunctive, hyphen, compound, dash, colon, container, defensive, language]
+        let fixed = pairs.map(\.1) + [pronounCase, agreement, tense, fewer, doubleNegative, splice, possessive, pluralApostrophe, missingTo, preposition, canadian, dangling, subjunctive, hyphen, compound, dash, colon, container, defensive, language]
         if let l = fixed.first(where: { $0.id == id }) { return l }
         if id.hasPrefix("spell-") {
             let w = String(id.dropFirst(6))
