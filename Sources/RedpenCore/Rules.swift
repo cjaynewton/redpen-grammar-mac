@@ -138,6 +138,19 @@ public enum Rules {
     static let owned = "(?:latest|newest|own|first|next|last|final|revised|updated|current|favourite|favorite|main|usual|previous|original|entire|whole|upcoming|existing|new|old|recent|monthly|weekly|annual|yearly|daily)"
     static let contractedOwner = try! NSRegularExpression(pattern: "\\b(you['\u{2019}]re|they['\u{2019}]re|we['\u{2019}]re|it['\u{2019}]s) \(owned) [a-z]+\\b(?! (?:is|are|was|were|and|or|but|to|for|of|in|on|at|with|by|from|as|than|so|that|if|when|because)\\b)", options: [.caseInsensitive])
     static let ownerForm = ["you're": "your", "they're": "their", "we're": "our", "it's": "its"]
+    // "add you're initials", "replacing it's damaged trim": right after a verb that takes a thing, or a preposition,
+    // only an owner fits, so the contraction is wrong. Then a noun, or one describing word and a noun, must follow.
+    static let contractionAsObject = try! NSRegularExpression(pattern:
+        "\\b([a-z]+) ((?:you|they|we|it)['\u{2019}](?:re|s)) (?:([a-z]+) )?([a-z]+)\\b")
+    static let notObjectVerbs: Set<String> = clauseVerbs.union(Splices.reporting).union(Splices.auxiliaries).union(["show",
+        "shows", "showed", "prove", "proves", "proved", "suggest", "suggests", "suggested", "mean", "means", "meant",
+        "find", "finds", "found", "hear", "heard", "learn", "learned", "learnt", "see", "saw", "seen", "ensures",
+        "indicate", "indicates", "indicated", "explain", "explains", "explained", "let", "make", "makes", "made",
+        "imagine", "bet", "trust", "say", "says", "tell", "tells", "told", "check", "confirm", "note", "notice",
+        "figure", "guarantee", "promise", "swear", "warn", "warned", "reckon", "show", "worry", "worried", "care"])
+    /// Words that open a clause: "When you arrive it's time" may have dropped its comma, so the verb ends a clause.
+    static let clauseOpeners: Set<String> = ["if", "when", "once", "after", "before", "until", "as", "because", "while",
+        "since", "unless", "whenever", "though", "although", "where", "what", "how", "why", "who", "whatever", "however"]
 
     static func patternIssues(_ text: String) -> [Issue] {
         let ns = text as NSString
@@ -215,6 +228,30 @@ public enum Rules {
             out.append(Issue(range: r, kind: .grammar, message: "Something is owned here: \u{201C}\(fix)\u{201D}.",
                              replacements: [fix], original: word))
         }
+        for m in contractionAsObject.matches(in: text, range: full) where !out.contains(where: { $0.range.overlaps(m.range(at: 2)) }) {
+            let before = ns.substring(with: m.range(at: 1))
+            let objectSlot = !notObjectVerbs.contains(before) && !clauseOpeners.contains(before)
+                && (prepositions.contains(before) && !["after", "before", "except", "including"].contains(before)
+                    || isVerb(at: m.range(at: 1).location, in: text))
+            // The thing owned: "you're initials", "you're preferred time", or "it's damaged trim." at the end of the
+            // sentence, where the tagger often reads the last word as a verb. "it's time" is left alone.
+            let mid = m.range(at: 3), last = m.range(at: 4)
+            let endsPhrase = NSMaxRange(last) == ns.length || ".,;:!?".contains(ns.substring(with: NSRange(location: NSMaxRange(last), length: 1)))
+            let owned = mid.location == NSNotFound ? nounAt(last.location, in: text) && ns.substring(with: last) != "time"
+                : nounAt(mid.location, in: text) ? ns.substring(with: mid) != "time"
+                : nounAt(last.location, in: text) || endsPhrase
+            guard objectSlot, owned else { continue }
+            // "When you finish you're done": a clause opener earlier in the sentence with no comma since.
+            let lead = ns.substring(to: m.range.location)
+            let sentence = lead.components(separatedBy: CharacterSet(charactersIn: ".!?\n")).last ?? lead
+            let sinceComma = sentence.components(separatedBy: ",").last ?? sentence
+            if sinceComma.lowercased().split(whereSeparator: { !$0.isLetter }).contains(where: { clauseOpeners.contains(String($0)) }) { continue }
+            let r = m.range(at: 2), word = ns.substring(with: r)
+            guard var fix = ownerForm[word.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")] else { continue }
+            if word.first?.isUppercase == true { fix = fix.prefix(1).uppercased() + fix.dropFirst() }
+            out.append(Issue(range: r, kind: .grammar, message: "Something is owned here: \u{201C}\(fix)\u{201D}.",
+                             replacements: [fix], original: word))
+        }
         for m in collocationRegex.matches(in: text, range: full) {
             let phrase = ns.substring(with: m.range)
             let words = phrase.split(separator: " ").map(String.init)
@@ -239,6 +276,14 @@ public enum Rules {
         guard tag == .verb, !w.hasSuffix("ing"), !w.hasSuffix("ed") || w.hasSuffix("eed"),
               let lemma = tagger.tag(at: r.lowerBound, unit: .word, scheme: .lemma).0?.rawValue else { return false }
         return lemma.lowercased() == w
+    }
+
+    /// Whether the word at `loc` is tagged a noun in its sentence.
+    static func nounAt(_ loc: Int, in text: String) -> Bool {
+        guard let r = Range(NSRange(location: loc, length: 0), in: text) else { return false }
+        let tagger = NLTagger(tagSchemes: [.lexicalClass])
+        tagger.string = text
+        return tagger.tag(at: r.lowerBound, unit: .word, scheme: .lexicalClass).0 == .noun
     }
 
     /// Whether the word at `loc` is a plural noun in its sentence: tagged a noun, and its lemma is not the word itself.
