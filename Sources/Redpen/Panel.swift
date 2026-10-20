@@ -641,6 +641,13 @@ final class SuggestionPanel: NSObject {
         f.attributedStringValue = Self.joinLastWords(s)
         f.preferredMaxLayoutWidth = width ?? textWidth
         f.widthAnchor.constraint(equalToConstant: width ?? textWidth).isActive = true
+        // macOS 14 and 15 size some paragraphs a little shorter than they draw them, then drop the last line
+        // (seen on macOS 14.8, Oct 20 2026). Measure the text itself there; macOS 26 and later are left as they were.
+        if #unavailable(macOS 26) {
+            let fits = f.attributedStringValue.boundingRect(with: NSSize(width: width ?? textWidth, height: .greatestFiniteMagnitude),
+                                                            options: [.usesLineFragmentOrigin, .usesFontLeading])
+            f.heightAnchor.constraint(greaterThanOrEqualToConstant: ceil(fits.height)).isActive = true
+        }
         return f
     }
 
