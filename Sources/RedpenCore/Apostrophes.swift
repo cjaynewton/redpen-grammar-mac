@@ -54,7 +54,7 @@ enum Apostrophes {
     static let notPlural: Set<String> = ["it", "that", "what", "there", "here", "who", "let", "one", "everyone", "someone",
         "anyone", "nobody", "everybody", "somebody", "anybody", "he", "she", "where", "how", "why", "when", "today",
         "tonight", "yesterday", "tomorrow", "nothing", "everything", "something", "anything", "this", "other", "another",
-        "people", "children", "men", "women", "staff", "world", "year", "week", "month", "day", "hour", "minute", "night"]
+        "people", "children", "men", "women", "staff", "bachelor", "master", "doctor", "world", "year", "week", "month", "day", "hour", "minute", "night"]
 
     static func issues(_ text: String) -> [Issue] {
         var out: [Issue] = []
@@ -210,8 +210,31 @@ enum Apostrophes {
                 out.append((m.range, owns ? plural(word) + "'" : plural(word)))
             } else if let a = after, pluralVerbs.contains(a.lower) || a.lower == "do" {
                 out.append((m.range, plural(word)))
+            } else if objectWithNothingOwned(toks, word: w, after: after), !owners.contains(word) {
+                out.append((m.range, plural(word)))
             }
         }
         return out
+    }
+
+    /// "sells handmade candle's in three sizes", "returned their signed contract's.": the word is the object of a
+    /// verb, so the 's cannot be "is", and nothing owned follows it. Shops and people are left alone, since
+    /// "visited my aunt's" leaves the place unsaid.
+    static func objectWithNothingOwned(_ toks: [Token], word: Token, after: Token?) -> Bool {
+        if let a = after, !(a.tag == .preposition || a.tag == .sentenceTerminator || a.tag == .conjunction || a.text == ",") { return false }
+        guard let w = toks.firstIndex(where: { $0.range == word.range }) else { return false }
+        var i = w - 1
+        // Walk back over the rest of the phrase: "the empty", "their signed", "handmade".
+        while i >= 0, [.adjective, .determiner, .number].contains(toks[i].tag)
+            || toks[i].tag == .verb && toks[i].lower.hasSuffix("ed") && i > 0 && Splices.determiners.contains(toks[i - 1].lower)
+                && [.noun, .adjective].contains(toks[i + 1].tag) {
+            // "a bachelor's from Imperial": after "a" or "this" it is one thing, so not a plural.
+            if ["a", "an", "one", "each", "every", "this", "that", "another"].contains(toks[i].lower) { return false }
+            i -= 1
+        }
+        guard i >= 0, toks[i].tag == .verb else { return false }
+        let v = toks[i].lower
+        return !Splices.auxiliaries.contains(v) && !Splices.beForms.contains(v) && !Rules.clauseVerbs.contains(v)
+            && !Splices.reporting.contains(v) && !["visit", "visited", "visiting", "visits", "let", "lets"].contains(v)
     }
 }
