@@ -175,7 +175,8 @@ public enum Lessons {
             break
         }
 
-        if msg.contains("two sentences joined by a comma") { return splice }
+        if msg.contains("two sentences") { return splice }
+        if msg.contains("verb agrees with") { return agreement }
         if msg.contains("double negative") { return doubleNegative }
         if msg.hasPrefix("dangling modifier") { return dangling }
         if msg.contains("isn't true") || msg.contains("plain verb") { return subjunctive }

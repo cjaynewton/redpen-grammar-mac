@@ -14,8 +14,8 @@ public enum Spelling {
         for r in results {
             if r.resultType == .spelling {
                 let word = ns.substring(with: r.range)
-                if isName(word, at: r.range.location, in: ns) || acceptedElsewhere(word, checker) { continue }
                 let guesses = checker.guesses(forWordRange: r.range, in: text, language: "en", inSpellDocumentWithTag: 0) ?? []
+                if isName(word, at: r.range.location, in: ns) && !calendarSlip(word, guesses) || acceptedElsewhere(word, checker) { continue }
                 // "ultrapure" -> "ultra pure", "sportsbook" -> "sports book": a real compound the dictionary
                 // splits, not a typo. Every letter is already in the right place.
                 if let g = guesses.first, isSplit(g, of: word) { continue }
@@ -51,6 +51,16 @@ public enum Spelling {
         if let tag, [NLTag.personalName, .placeName, .organizationName].contains(tag) { return true }
         // "Loblaw's president": a possessive at the start of a sentence is nearly always a name.
         return word.hasSuffix("'s") || word.hasSuffix("\u{2019}s")
+    }
+
+    static let calendar: Set<String> = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+        "January", "February", "March", "April", "June", "July", "August", "September", "October", "November", "December"]
+
+    /// "Wenesday" and "Febuary" are capitalised like names, but the dictionary's first guess is a day or a month
+    /// a letter or two away, so it is a slip, not a name.
+    static func calendarSlip(_ word: String, _ guesses: [String]) -> Bool {
+        guard let g = guesses.first, calendar.contains(g), g != word else { return false }
+        return Lessons.editDistance(g.lowercased(), word.lowercased()) <= 2
     }
 
     /// American, Canadian and British spellings are all accepted (behavior, neighbourhood).

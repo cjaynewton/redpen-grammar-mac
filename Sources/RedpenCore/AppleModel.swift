@@ -149,6 +149,9 @@ public enum AppleModel {
         if (o.contains("'") || o.contains("\u{2019}")) && !r.contains("'") && !r.contains("\u{2019}")
             && r.lowercased().hasPrefix(String(o.prefix(2))) { return false }
         if r.range(of: "\\b(could|should|would|must|might) of\\b", options: [.regularExpression, .caseInsensitive]) != nil { return false }
+        // "to Ben and me" is right, and the model keeps "correcting" it. "Me and Sam went" is caught by the Rules.
+        let subjectForm = ["me": "i", "him": "he", "her": "she", "us": "we", "them": "they"]
+        if let want = subjectForm[o], r.lowercased() == want { return false }
         return true
     }
 
