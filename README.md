@@ -56,13 +56,19 @@ Three engines, all local, combined so each covers the others' blind spots:
 
 ## How good is it?
 
-Redpen was tested three ways.
+We tested Redpen on 1,000 new sentences written by someone outside the project, the kind of thing people type into emails, quotes and texts every day. Seven in ten had one mistake. The rest were correct, to see whether Redpen would nag. Half the sentences stayed sealed until the work was done, and the numbers below come from that sealed half.
 
-- **Does it catch mistakes?** We wrote 100 short sentences, each with one mistake: a misspelling, a grammar slip, a mixed-up word like *their* and *there*, or a broken style rule. Redpen caught 98.
-- **Does it leave good writing alone?** On 35 sentences with nothing wrong, it flagged none.
-- **Does it nag?** We ran it over 120 paragraphs of published writing that had already been edited, so almost anything flagged there is a false alarm. Redpen flagged 11. Grammarly's free version flagged 35 of the same paragraphs.
+| | Finds the mistake | Marks a correct sentence by mistake |
+|---|---|---|
+| Redpen, as you type | 309 of 353 (88%) | 2 of 150 |
+| Redpen Deep check, with Claude or ChatGPT | **353 of 353 (100%)** | **0 of 150** |
+| The leading paid grammar checker | 345 of 353 (98%) | 4 of 150 |
 
-Fewer flags on finished writing means fewer interruptions while you work.
+**Deep check uses the subscription you already have.** If you pay for ChatGPT or Claude, Deep check runs on it, so there is no new subscription to buy. These scores are on Fast, the setting Redpen starts with.
+
+**Redpen leaves good writing alone.** We also gave it 360 paragraphs that were already finished. An editor had checked every one, so there was almost nothing left to fix. Almost every mark here is a false alarm, so fewer is better. Redpen raised a false alarm on 45 paragraphs. The leading paid checker raised one on 145, more than three times as often.
+
+Tested October 2026.
 
 ## Download
 
