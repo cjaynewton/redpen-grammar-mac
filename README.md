@@ -60,11 +60,14 @@ We tested Redpen on 1,000 new sentences written by someone outside the project, 
 
 | | Finds the mistake | Marks a correct sentence by mistake |
 |---|---|---|
-| Redpen, as you type | 309 of 353 (88%) | 2 of 150 |
+| Redpen, as you type | 320 of 353 (91%) | 2 of 150 |
+| Redpen, as you type, on a Mac without Apple Intelligence | 289 of 353 (82%) | 1 of 150 |
 | Redpen Deep check, with Claude or ChatGPT | **353 of 353 (100%)** | **0 of 150** |
 | The leading paid grammar checker | 345 of 353 (98%) | 4 of 150 |
 
 **Deep check uses the subscription you already have.** If you pay for ChatGPT or Claude, Deep check runs on it, so there is no new subscription to buy. These scores are on Fast, the setting Redpen starts with.
+
+**No Apple Intelligence? Redpen still works.** Apple Intelligence only runs on newer Macs with macOS 26. On any other Mac, Redpen skips those checks and keeps the rest, which still find 8 in 10 mistakes as you type, and Deep check scores the same.
 
 **Redpen leaves good writing alone.** We also gave it 360 paragraphs that were already finished. An editor had checked every one, so there was almost nothing left to fix. Almost every mark here is a false alarm, so fewer is better. Redpen raised a false alarm on 45 paragraphs. The leading paid checker raised one on 145, more than three times as often.
 
