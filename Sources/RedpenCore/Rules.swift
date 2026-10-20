@@ -116,7 +116,7 @@ public enum Rules {
         let ns = text as NSString
         let full = NSRange(location: 0, length: ns.length)
         var out: [Issue] = Splices.issues(text) + Advanced.subjunctiveIssues(text) + Advanced.hyphenIssues(text)
-        for i in Agreement.issues(text) where !out.contains(where: { $0.range.overlaps(i.range) }) { out.append(i) }
+        for i in Agreement.issues(text) + Apostrophes.issues(text) where !out.contains(where: { $0.range.overlaps(i.range) }) { out.append(i) }
         for m in meAnd.matches(in: text, range: full) {
             let raw = ns.substring(with: m.range(at: 2)); let name = raw.prefix(1).uppercased() + raw.dropFirst()
             out.append(Issue(range: m.range(at: 1), kind: .grammar, message: "Use \"\(name) and I\" as the subject",

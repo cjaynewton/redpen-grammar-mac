@@ -86,6 +86,13 @@ public enum Lessons {
         "A comma can't join two full sentences. Use a period, or keep the comma and add and, but or so.",
         "The buyer liked the pitch. He asked for a second meeting.")
 
+    static let possessive = make("possessive", "Maya's notes",
+        "When someone owns something, add an apostrophe and s: Maya's notes, the driver's phone. If several people own it, put the apostrophe after the s: the drivers' phones.",
+        "Maya's notes are on the baker's invoice.")
+    static let pluralApostrophe = make("plural-apostrophe", "plurals take no apostrophe",
+        "A plain plural never takes an apostrophe: three cartons, the batteries. The apostrophe is only for owning (the carton's label) or a shortened word (it's).",
+        "We counted three cartons; the batteries are in the drawer.")
+
     static let dangling = make("dangling-modifier", "dangling modifier",
         "An opening phrase like \u{201C}Walking into the store,\u{201D} describes whoever comes right after the comma. Put the person who did it there.",
         "Walking into the store, I saw the shelves were empty.")
@@ -176,6 +183,8 @@ public enum Lessons {
         }
 
         if msg.contains("two sentences") { return splice }
+        if msg.hasPrefix("something belongs to") { return possessive }
+        if msg.hasPrefix("more than one, so no apostrophe") { return pluralApostrophe }
         if msg.contains("verb agrees with") { return agreement }
         if msg.contains("double negative") { return doubleNegative }
         if msg.hasPrefix("dangling modifier") { return dangling }
@@ -242,7 +251,7 @@ public enum Lessons {
 
     /// Fixed lessons by id, for the patterns page. Spelling and confused-pair lessons are rebuilt from the id.
     public static func byID(_ id: String) -> Lesson? {
-        let fixed = pairs.map(\.1) + [pronounCase, agreement, tense, fewer, doubleNegative, splice, canadian, dangling, subjunctive, hyphen, compound, dash, colon, container, defensive, language]
+        let fixed = pairs.map(\.1) + [pronounCase, agreement, tense, fewer, doubleNegative, splice, possessive, pluralApostrophe, canadian, dangling, subjunctive, hyphen, compound, dash, colon, container, defensive, language]
         if let l = fixed.first(where: { $0.id == id }) { return l }
         if id.hasPrefix("spell-") {
             let w = String(id.dropFirst(6))
