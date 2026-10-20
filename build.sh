@@ -19,12 +19,13 @@ if [[ ! -d /Applications/Xcode.app ]]; then
   exit 1
 fi
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-swift build -c release --product Redpen
+# One app for Apple chips and Intel Macs. Intel Macs never get Apple Intelligence; the rest of Redpen runs the same.
+swift build -c release --product Redpen --arch arm64 --arch x86_64
 
 APP="build/Redpen Grammar.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
-cp .build/release/Redpen "$APP/Contents/MacOS/Redpen"
+cp .build/out/Products/Release/Redpen "$APP/Contents/MacOS/Redpen"
 # Newsreader, the card and panel serif (SIL Open Font License, Resources/Fonts/OFL.txt).
 mkdir -p "$APP/Contents/Resources"
 cp -R Resources/Fonts "$APP/Contents/Resources/Fonts"
@@ -36,8 +37,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleName</key><string>Redpen Grammar</string>
   <key>CFBundleExecutable</key><string>Redpen</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.6</string>
-  <key>CFBundleVersion</key><string>6</string>
+  <key>CFBundleShortVersionString</key><string>0.7</string>
+  <key>CFBundleVersion</key><string>7</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>NSAppleEventsUsageDescription</key><string>Redpen reads the text you type to check it.</string>

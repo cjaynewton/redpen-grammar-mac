@@ -31,8 +31,13 @@ public enum AppleModel {
     """
 
     public static var isAvailable: Bool {
+        // Apple Intelligence runs only on Apple chips; the Intel half of the app never touches the framework.
+        #if arch(x86_64)
+        return false
+        #else
         if case .available = SystemLanguageModel.default.availability { return true }
         return false
+        #endif
     }
 
     static let rewriteInstructions = """
