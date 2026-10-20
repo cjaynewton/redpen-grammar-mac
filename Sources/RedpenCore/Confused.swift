@@ -1,4 +1,5 @@
 import Foundation
+import NaturalLanguage
 
 /// Mixed-up words that the words around them settle without a model: "your able to", "please advice us",
 /// "check weather the", "feels lose", "over their by the door". Each pattern is a spot where only one of the pair
@@ -44,10 +45,36 @@ enum Confused {
         Pattern("\\b(?:stay|stays|stayed|staying|remain|remains|remained|remaining|stand|stood|is|was|are|were|be|been|completely|perfectly) (stationery)\\b", "stationary"),
     ]
 
+    // "leave there coats in the cupboard", "put there collection notes in": a verb that moves a thing, then "there"
+    // and a noun that the verb acts on. "left there years ago" and "put there yesterday" are places and times.
+    static let thereOwner = try! NSRegularExpression(pattern:
+        "\\b(?:put|puts|leave|leaves|left|bring|brings|brought|take|takes|took|send|sends|keep|keeps|kept|store|stores|stored|place|places|placed|return|returns|returned|pack|packs|packed|collect|collects|collected|update|updates|updated|sign|signs|hand|hands|handed|drop|drops|dropped|share|shares|shared|check|checks|checked|fill|fills|filled|label|labels|labelled|labeled) (there) ([a-z]+) ([a-z]+)\\b", options: [.caseInsensitive])
+
+    /// Whether the word reads as a noun on its own, in "I saw the ___ today." After "there" the tagger takes most
+    /// words for verbs ("there coats").
+    static func isNoun(_ w: String) -> Bool {
+        let s = "I saw the \(w) today."
+        let tagger = NLTagger(tagSchemes: [.lexicalClass])
+        tagger.string = s
+        guard let r = s.range(of: " \(w) ") else { return false }
+        return tagger.tag(at: s.index(after: r.lowerBound), unit: .word, scheme: .lexicalClass).0 == .noun
+    }
+
     static func issues(_ text: String) -> [Issue] {
         let ns = text as NSString
         let full = NSRange(location: 0, length: ns.length)
         var out: [Issue] = []
+        for m in thereOwner.matches(in: text, range: full) {
+            let noun = ns.substring(with: m.range(at: 2)).lowercased()
+            guard !Agreement.amounts.contains(noun), !Apostrophes.timeNouns.contains(noun), !Splices.auxiliaries.contains(noun),
+                  isNoun(noun), isNoun(ns.substring(with: m.range(at: 3)).lowercased())
+                      || Rules.prepositions.contains(ns.substring(with: m.range(at: 3)).lowercased())
+            else { continue }
+            let r = m.range(at: 1), word = ns.substring(with: r)
+            let fix = word.first?.isUppercase == true ? "Their" : "their"
+            out.append(Issue(range: r, kind: .grammar, message: "Commonly confused: did you mean \u{201C}\(fix)\u{201D}?",
+                             replacements: [fix], original: word))
+        }
         for p in patterns {
             for m in p.regex.matches(in: text, range: full) {
                 let r = m.range(at: 1), word = ns.substring(with: r)
