@@ -11,6 +11,8 @@ PASSED_SIGN_ID="$REDPEN_SIGN_ID"
 [[ -f .local.env ]] && source ./.local.env
 [[ -n "$PASSED_SIGN_ID" ]] && REDPEN_SIGN_ID="$PASSED_SIGN_ID"
 BUNDLE_ID="${REDPEN_BUNDLE_ID:-io.github.redpen-mac.Redpen}"
+# The public half of the key that signs each update (the private half stays in the maintainer's keychain).
+SPARKLE_PUBLIC_KEY="SPARKLE_PUBLIC_KEY_PENDING"
 SIGN_ID="${REDPEN_SIGN_ID:--}"   # "-" is an ad-hoc signature
 
 # Apple's on-device model needs the full Xcode toolchain, not just the Command Line Tools.
@@ -24,8 +26,11 @@ swift build -c release --product Redpen --arch arm64 --arch x86_64
 
 APP="build/Redpen Grammar.app"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Frameworks"
 cp .build/out/Products/Release/Redpen "$APP/Contents/MacOS/Redpen"
+# Sparkle, for one-click updates. Redpen is not sandboxed, so Sparkle's two helper services for sandboxed apps are left out.
+cp -R .build/out/Products/Release/Sparkle.framework "$APP/Contents/Frameworks/"
+rm -rf "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices" "$APP/Contents/Frameworks/Sparkle.framework/XPCServices"
 # Newsreader, the card and panel serif (SIL Open Font License, Resources/Fonts/OFL.txt).
 mkdir -p "$APP/Contents/Resources"
 cp -R Resources/Fonts "$APP/Contents/Resources/Fonts"
@@ -41,13 +46,25 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleVersion</key><string>7</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
+  <key>SUFeedURL</key><string>https://github.com/cjaynewton/redpen-grammar-mac/releases/latest/download/appcast.xml</string>
+  <key>SUPublicEDKey</key><string>$SPARKLE_PUBLIC_KEY</string>
+  <key>SUEnableAutomaticChecks</key><true/>
   <key>NSAppleEventsUsageDescription</key><string>Redpen reads the text you type to check it.</string>
 </dict></plist>
 PLIST
 if [[ "$SIGN_ID" == Developer\ ID* ]]; then
   # A download for other Macs: hardened runtime and a secure timestamp, which Apple's notary service requires.
+  # Inside out: Sparkle's helpers, then Sparkle, then the app.
+  SP="$APP/Contents/Frameworks/Sparkle.framework"
+  for part in "$SP/Versions/B/Autoupdate" "$SP/Versions/B/Updater.app" "$SP"; do
+    codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$part"
+  done
   codesign --force --options runtime --timestamp --sign "$SIGN_ID" --identifier "$BUNDLE_ID" "$APP"
 else
+  SP="$APP/Contents/Frameworks/Sparkle.framework"
+  for part in "$SP/Versions/B/Autoupdate" "$SP/Versions/B/Updater.app" "$SP"; do
+    codesign --force --sign "$SIGN_ID" "$part"
+  done
   codesign --force --sign "$SIGN_ID" --identifier "$BUNDLE_ID" "$APP"
 fi
 if [[ "$SIGN_ID" == "-" ]]; then

@@ -121,6 +121,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
         }
         watcher.start()
         GrammarEngine.shared.startIfInstalled()
+        Updates.start()
         hotKey = HotKey { [weak self] in self?.watcher.openNearest() }
         fixAllKey = HotKey(id: 2, modifiers: controlKey | optionKey | shiftKey, name: "Control-Option-Shift-R") { [weak self] in
             self?.watcher.fixAllAtCursor()

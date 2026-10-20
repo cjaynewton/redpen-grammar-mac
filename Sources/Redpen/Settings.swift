@@ -13,6 +13,7 @@ final class SettingsModel: ObservableObject {
             if openAtLogin { try? SMAppService.mainApp.register() } else { try? SMAppService.mainApp.unregister() }
         }
     }
+    @Published var autoUpdate: Bool { didSet { Updates.automatic = autoUpdate } }
     @Published var engineRunning: Bool?
     /// Whether each Deep check helper is ready, keyed "claude", "chatgpt", "gemini".
     @Published var helpers: [String: HelperRow.State] = [:]
@@ -22,6 +23,7 @@ final class SettingsModel: ObservableObject {
         self.config = config
         self.onChange = onChange
         self.openAtLogin = SMAppService.mainApp.status == .enabled
+        self.autoUpdate = Updates.automatic
     }
 
     func checkEngine() { Task { engineRunning = await LanguageTool.isRunning() } }
@@ -204,6 +206,12 @@ struct SettingsPage: View {
                 Group {
                     Switch(label: "Check my writing", on: $model.config.enabled)
                     Switch(label: "Open at login", on: $model.openAtLogin)
+                    Row(label: "Check for updates", sub: "Once a day. Nothing you write is sent.") {
+                        HStack(spacing: 10) {
+                            Button("Check now") { Updates.checkNow() }
+                            Toggle("Check for updates", isOn: $model.autoUpdate).toggleStyle(.switch).labelsHidden().tint(.green)
+                        }
+                    }
                     Row(label: "Full grammar", sub: "LanguageTool, on this Mac") {
                         switch model.engineRunning {
                         case .some(true): Text("Running").foregroundStyle(.green)
