@@ -111,6 +111,11 @@ public enum Rules {
         "really", "only", "even", "still", "already", "all", "both", "back", "out", "up", "off", "in", "on", "over",
         "about", "for", "with", "from", "into", "help", "please", "and", "or", "but", "so", "that", "than", "if"])
 
+    // "arrived to our shop": arriving is at a place. "arrived to find" is fine, so only before a place's determiner.
+    static let arriveTo = try! NSRegularExpression(pattern: "\\b(?:arrive|arrives|arrived|arriving) (to)(?= (?:the|our|your|a|an|my|his|her|their|this|that)\\b)", options: [.caseInsensitive])
+    // "let me checked the stock": after let, make or help someone, the plain verb.
+    static let letPast = try! NSRegularExpression(pattern: "\\b(?:let|lets|make|makes|help|helps) (?:me|us|him|her|them|you) ([a-z]+ed)(?= (?:the|a|an|our|your|my|his|her|their|this|that|these|those|it|them)\\b)", options: [.caseInsensitive])
+
     /// Verbs that take a whole clause, where "I" is right: "I hope Maya and I can go".
     static let clauseVerbs: Set<String> = Splices.reporting.union(["wish", "wished", "knew", "hoped", "guessed", "meant",
         "assumed", "supposed", "felt", "realised", "realized", "noticed", "remember", "remembered", "forget", "forgot",
@@ -127,6 +132,7 @@ public enum Rules {
         ("capable", ["to", "for"], "of"), ("responsible", ["of", "on"], "for"), ("afraid", ["from", "for"], "of"),
         ("comply", ["to"], "with"), ("complies", ["to"], "with"), ("complied", ["to"], "with"), ("complying", ["to"], "with"),
         ("similar", ["with"], "to"), ("aware", ["about"], "of"), ("superior", ["than"], "to"), ("inferior", ["than"], "to"),
+        ("refer", ["at", "on"], "to"), ("refers", ["at", "on"], "to"), ("referred", ["at", "on"], "to"),
         ("married", ["with"], "to"), ("listen", ["at"], "to"), ("listened", ["at"], "to"), ("entitled", ["a", "an", "the", "one"], "to"),
     ]
     static let collocationRegex: NSRegularExpression = {
@@ -252,6 +258,17 @@ public enum Rules {
             out.append(Issue(range: r, kind: .grammar, message: "Something is owned here: \u{201C}\(fix)\u{201D}.",
                              replacements: [fix], original: word))
         }
+        for m in arriveTo.matches(in: text, range: full) {
+            let r = m.range(at: 1)
+            out.append(Issue(range: r, kind: .grammar, message: "\u{201C}Arrive\u{201D} takes \u{201C}at\u{201D}: \u{201C}arrived at\u{201D}.",
+                             replacements: ["at"], original: ns.substring(with: r)))
+        }
+        for m in letPast.matches(in: text, range: full) {
+            let r = m.range(at: 1), word = ns.substring(with: r)
+            guard let lemma = lemma(at: r.location, in: text), lemma != word.lowercased(), !lemma.isEmpty else { continue }
+            out.append(Issue(range: r, kind: .grammar, message: "After \u{201C}let me\u{201D} the verb is plain: \u{201C}\(lemma)\u{201D}.",
+                             replacements: [lemma], original: word))
+        }
         for m in collocationRegex.matches(in: text, range: full) {
             let phrase = ns.substring(with: m.range)
             let words = phrase.split(separator: " ").map(String.init)
@@ -276,6 +293,13 @@ public enum Rules {
         guard tag == .verb, !w.hasSuffix("ing"), !w.hasSuffix("ed") || w.hasSuffix("eed"),
               let lemma = tagger.tag(at: r.lowerBound, unit: .word, scheme: .lemma).0?.rawValue else { return false }
         return lemma.lowercased() == w
+    }
+
+    static func lemma(at loc: Int, in text: String) -> String? {
+        guard let r = Range(NSRange(location: loc, length: 0), in: text) else { return nil }
+        let tagger = NLTagger(tagSchemes: [.lemma])
+        tagger.string = text
+        return tagger.tag(at: r.lowerBound, unit: .word, scheme: .lemma).0?.rawValue.lowercased()
     }
 
     /// Whether the word at `loc` is tagged a noun in its sentence.
