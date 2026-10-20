@@ -411,7 +411,7 @@ final class Watcher {
         if issue.message.hasPrefix("This came through in") && issue.replacements.isEmpty {
             Task { @MainActor in
                 var i = issue
-                if let t = await AppleModel.translate(issue.original) { i.replacements = [t] }
+                if #available(macOS 26, *), let t = await AppleModel.translate(issue.original) { i.replacements = [t] }
                 self.showPanel(i, el, anchor)
             }
             return

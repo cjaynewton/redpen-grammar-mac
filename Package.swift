@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "redpen",
-    platforms: [.macOS("26.0")],
+    platforms: [.macOS("14.0")],
     targets: [
         .target(name: "RedpenCore"),
         .executableTarget(name: "Redpen", dependencies: ["RedpenCore"]),

@@ -190,6 +190,7 @@ public enum Advanced {
     /// Dangling modifiers, confirmed by Apple's model. Shown as "maybe": the model judges what the subject is.
     public static func dangling(_ text: String) async -> [Issue] {
         var out: [Issue] = []
+        guard #available(macOS 26, *) else { return out }
         for o in danglingOpeners(text) where await AppleModel.cannotDo(o.subject, o.phrase) {
             out.append({
                 var i = Issue(range: o.range, kind: .grammar,

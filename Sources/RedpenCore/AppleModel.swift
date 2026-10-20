@@ -2,6 +2,7 @@ import Foundation
 import FoundationModels
 import NaturalLanguage
 
+@available(macOS 26, *)
 @Generable
 struct ModelEdit {
     @Guide(description: "The wrong words, copied exactly from the input, as short as possible (one to five words)")
@@ -12,6 +13,7 @@ struct ModelEdit {
     var reason: String
 }
 
+@available(macOS 26, *)
 @Generable
 struct ModelReview {
     @Guide(description: "Only real grammar or word errors. Empty when the text is correct.")
@@ -19,6 +21,7 @@ struct ModelReview {
 }
 
 /// Apple's on-device model. Grammar a dictionary cannot see, plus translation. Nothing leaves the Mac.
+@available(macOS 26, *)
 public enum AppleModel {
     static let instructions = """
     You are a careful copy editor. Find real grammar errors only: wrong verb tense or agreement, wrong word \

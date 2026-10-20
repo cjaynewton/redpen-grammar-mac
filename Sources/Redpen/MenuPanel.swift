@@ -71,7 +71,7 @@ final class PanelModel: ObservableObject {
     /// Asks Claude Code and Codex whether they are signed in. Both answer from local files, no network call.
     func checkHelpers(claudePath: String) {
         helpersCheckedAt = Date()
-        set("apple", AppleModel.isAvailable ? .connected : .off)
+        set("apple", { if #available(macOS 26, *), AppleModel.isAvailable { return .connected } else { return .off } }())
         Task.detached {
             let claude = Helpers.claude(path: claudePath)
             let codex = Helpers.codex()

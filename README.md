@@ -66,11 +66,11 @@ Fewer flags on finished writing means fewer interruptions while you work.
 
 ## Download
 
-**[Download the latest Redpen Grammar](https://github.com/cjaynewton/redpen-grammar-mac/releases/latest)** (the `.dmg` file), open it, and drag Redpen Grammar into Applications. If you have an older copy called Redpen, delete it. It's signed and notarized by Apple, and needs **macOS 26 or later**. No Xcode or Homebrew is needed. The first time it opens, a welcome window walks you through the one permission macOS needs, then click **Turn on** next to **Full grammar** in the Redpen menu for the grammar engine.
+**[Download the latest Redpen Grammar](https://github.com/cjaynewton/redpen-grammar-mac/releases/latest)** (the `.dmg` file), open it, and drag Redpen Grammar into Applications. If you have an older copy called Redpen, delete it. It's signed and notarized by Apple, and needs **macOS 14 Sonoma or later** on a Mac with Apple silicon (M1 or newer). The Apple Intelligence checks need macOS 26. No Xcode or Homebrew is needed. The first time it opens, a welcome window walks you through the one permission macOS needs, then click **Turn on** next to **Full grammar** in the Redpen menu for the grammar engine.
 
 ## Build from source
 
-You need **macOS 26 or later**, **Xcode** (free, from the Mac App Store; open it once after installing), and **[Homebrew](https://brew.sh)** for the grammar engine. **Apple Intelligence** turned on is recommended: without it Redpen still runs, minus the confused-word and meaning checks.
+You need **macOS 14 Sonoma or later** (macOS 26 for the Apple Intelligence checks), **Xcode** (free, from the Mac App Store; open it once after installing), and **[Homebrew](https://brew.sh)** for the grammar engine. **Apple Intelligence** turned on is recommended: without it Redpen still runs, minus the confused-word and meaning checks.
 
 ```sh
 git clone https://github.com/cjaynewton/redpen-grammar-mac.git

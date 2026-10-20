@@ -143,7 +143,7 @@ extension Spelling {
         for i in issues {
             guard i.kind == .spelling, let (sentence, at) = sentence(around: i.range, in: text) else { out.append(i); continue }
             let key = "\(sentence)|\(at)|\(i.original)"
-            if picks[key] == nil, AppleModel.isAvailable {
+            if #available(macOS 26, *), picks[key] == nil, AppleModel.isAvailable {
                 let pool = candidates(for: i, in: text)
                 let typo = NSRange(location: at, length: i.range.length)
                 if pool.count >= 2 { picks[key] = await AppleModel.pickWord(sentence, typo: typo, from: pool) ?? "" }

@@ -85,7 +85,7 @@ func run() async {
         }
     }
     let cleanTotal = cases.filter { $0.expect == nil }.count
-    print("Apple model available:", AppleModel.isAvailable)
+    if #available(macOS 26, *) { print("Apple model available:", AppleModel.isAvailable) } else { print("Apple model available: false (needs macOS 26)") }
     var caught: [String: (Int, Int)] = [:]
     var falsePos = 0
     var taught = 0, caughtTotal = 0

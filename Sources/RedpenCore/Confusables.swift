@@ -94,6 +94,7 @@ public enum Confusables {
         locked.matches(in: text, range: NSRange(location: 0, length: (text as NSString).length)).contains { NSIntersectionRange($0.range, r).length > 0 }
     }
 
+    @available(macOS 26, *)
     static func pick(_ sentence: String, gap: NSRange, options: [String]) async -> String? {
         let ns = sentence as NSString
         let blanked = ns.replacingCharacters(in: gap, with: "____")
@@ -167,7 +168,7 @@ public enum Confusables {
     /// Ranges are relative to `text`.
     public static func check(_ text: String) async -> [Issue] {
         var out: [Issue] = compoundIssues(text) + pastIssues(text)
-        guard AppleModel.isAvailable else { return out }
+        guard #available(macOS 26, *), AppleModel.isAvailable else { return out }
         for h in hits(in: text) where !isLocked(text, h.range) {
             let (s, gap) = sentence(in: text, around: h.range)
             guard s.split(separator: " ").count >= 3 else { continue }
