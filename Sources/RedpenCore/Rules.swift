@@ -82,10 +82,19 @@ public enum Rules {
     // "to you and she", "invited Maya and I": after a preposition or a verb, the pronoun takes its object form.
     static let objectForm = ["I": "me", "he": "him", "she": "her", "we": "us", "they": "them"]
     static let andI = try! NSRegularExpression(pattern:
-        "\\b([a-z]+) ((?:[A-Z][a-z]+|me|you|him|her|us|them) and )(I|he|she|we|they)\\b(?=\\s*(?:[.,!?;:]|$|(?:to|that|about|for|in|at|on|the|a|an|some|our|your|his|her|their|my|its|this|these|those|how|what|when|where|why|whether|if|everything|something|nothing|anything|more|enough|one|two|three|\\d)\\b))")
+        "\\b([a-z]+) ((?:[A-Z][a-z]+|me|you|him|her|us|them|(?:the|my|our|your|his|her|their|this|that) [a-z]+(?: [a-z]+)?) and )(I|he|she|we|they)\\b(?=\\s*(?:[.,!?;:]|$|(?:to|that|about|for|in|at|on|the|a|an|some|our|your|his|her|their|my|its|this|these|those|how|what|when|where|why|whether|if|everything|something|nothing|anything|more|enough|one|two|three|\\d)\\b))")
     static let prepositions: Set<String> = ["to", "for", "with", "from", "between", "at", "by", "of", "about", "without",
         "against", "among", "toward", "towards", "behind", "beside", "near", "unlike", "upon", "onto", "into", "via",
         "despite", "regarding", "concerning", "after", "before", "beyond", "except", "including"]
+    // "Him approved the budget", "Her will brief the team": a subject in its object form at the start of a sentence.
+    static let objectSubject = try! NSRegularExpression(pattern:
+        "(?:^|(?<=[.!?]\\s))(?:(Me|Him|Us|Them)(?= (?:will|would|can|could|should|must|might|may|shall|did|does|has|have|had|was|were|is|are|am|[a-z]+ed)\\b)|(Her)(?= (?:will|would|can|could|should|must|might|may|shall) (?!be\\b)[a-z]+\\b))")
+    static let subjectForm = ["Me": "I", "Him": "He", "Her": "She", "Us": "We", "Them": "They"]
+    // "send it to I", "a briefing for they before": a subject pronoun alone after a preposition or a verb, then a pause
+    // or the next phrase. Only "I" is ever capitalised, so a name or a heading never matches.
+    static let loneSubject = try! NSRegularExpression(pattern:
+        "\\b([a-z]+) (I|he|she|we|they)\\b(?=\\s*(?:[.,!?;:]|$|(?:the|a|an|our|your|his|her|their|my|this|that|these|those|about|before|after|at|on|in|with|for|to|from|until|tomorrow|today|tonight)\\b))")
+
     /// Verbs that take a whole clause, where "I" is right: "I hope Maya and I can go".
     static let clauseVerbs: Set<String> = Splices.reporting.union(["wish", "wished", "knew", "hoped", "guessed", "meant",
         "assumed", "supposed", "felt", "realised", "realized", "noticed", "remember", "remembered", "forget", "forgot",
@@ -137,6 +146,26 @@ public enum Rules {
             let pair = ns.substring(with: m.range(at: 2)) + fix
             out.append(Issue(range: span, kind: .grammar, message: "After \u{201C}\(before)\u{201D} the pronoun is \u{201C}\(fix)\u{201D}: \u{201C}\(pair)\u{201D}.",
                              replacements: [pair], original: ns.substring(with: span)))
+        }
+        for m in objectSubject.matches(in: text, range: full) {
+            let r = m.range(at: 1).location != NSNotFound ? m.range(at: 1) : m.range(at: 2)
+            let word = ns.substring(with: r)
+            guard let fix = subjectForm[word], !out.contains(where: { $0.range.overlaps(r) }) else { continue }
+            out.append(Issue(range: r, kind: .grammar, message: "As the subject the pronoun is \u{201C}\(fix)\u{201D}.",
+                             replacements: [fix], original: word))
+        }
+        for m in loneSubject.matches(in: text, range: full) {
+            let before = ns.substring(with: m.range(at: 1)).lowercased()
+            let r = m.range(at: 2)
+            let pronoun = ns.substring(with: r)
+            // "for he was tired" and "after we left" are clauses; a verb that takes a clause ("said he", "knew they")
+            // or a helper ("did they", "will we") is not an object slot.
+            let takesObject = prepositions.contains(before) && !["after", "before", "except", "including"].contains(before)
+                || !clauseVerbs.contains(before) && !Splices.auxiliaries.contains(before) && !Splices.reporting.contains(before)
+                    && before != "let" && isVerb(at: m.range(at: 1).location, in: text)
+            guard takesObject, let fix = objectForm[pronoun], !out.contains(where: { $0.range.overlaps(r) }) else { continue }
+            out.append(Issue(range: r, kind: .grammar, message: "After \u{201C}\(before)\u{201D} the pronoun is \u{201C}\(fix)\u{201D}.",
+                             replacements: [fix], original: pronoun))
         }
         let singular = ["have": "has", "are": "is", "were": "was", "do": "does", "don't": "doesn't"]
         for m in eachHave.matches(in: text, range: full) where !out.contains(where: { $0.range.overlaps(m.range(at: 1)) }) {
