@@ -33,14 +33,26 @@ public final class Mistakes: @unchecked Sendable {
         enc.dateEncodingStrategy = .iso8601
         guard var line = try? enc.encode(rec) else { return }
         line.append(0x0A)
-        lock.lock(); defer { lock.unlock() }
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if let h = try? FileHandle(forWritingTo: url) {
-            h.seekToEndOfFile(); h.write(line); try? h.close()
-        } else {
-            try? line.write(to: url)
-            Private.lock(url)
+        exclusive {
+            if let h = try? FileHandle(forWritingTo: url) {
+                h.seekToEndOfFile(); h.write(line); try? h.close()
+            } else {
+                try? line.write(to: url)
+                Private.lock(url)
+            }
         }
+    }
+
+    /// Runs `body` holding this object's lock and a lock file every Redpen process shares, so a second copy
+    /// trimming the list can't drop a fix the running app is adding. The list itself is replaced on trim,
+    /// so the lock lives in its own file beside it.
+    private func exclusive<T>(_ body: () -> T) -> T {
+        lock.lock(); defer { lock.unlock() }
+        let fd = open(url.path + ".lock", O_CREAT | O_RDWR, 0o600)
+        if fd >= 0 { flock(fd, LOCK_EX) }
+        defer { if fd >= 0 { flock(fd, LOCK_UN); close(fd) } }
+        return body()
     }
 
     public func all() -> [MistakeRecord] {
@@ -51,11 +63,15 @@ public final class Mistakes: @unchecked Sendable {
         return text.split(separator: "\n").compactMap { try? dec.decode(MistakeRecord.self, from: Data($0.utf8)) }
     }
 
-    /// Keeps only the last `days` days, since nothing Redpen shows looks back further than 30. Run at launch.
+    /// Keeps only the last `days` days, since nothing Redpen shows looks back further than eight weeks. Run at launch.
     /// A line whose date can't be read is kept, so a format change never empties the file.
     public func trim(keepDays days: Int = 90, now: Date = Date()) {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        exclusive { trimLocked(days, now) }
+    }
+
+    private func trimLocked(_ days: Int, _ now: Date) {
         struct Dated: Decodable { let date: Date }
-        lock.lock(); defer { lock.unlock() }
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return }
         let since = now.addingTimeInterval(-Double(days) * 86_400)
         let dec = JSONDecoder()

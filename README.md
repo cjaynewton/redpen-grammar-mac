@@ -70,7 +70,7 @@ Fewer flags on finished writing means fewer interruptions while you work.
 
 ## Build from source
 
-You need **macOS 14 Sonoma or later** (macOS 26 for the Apple Intelligence checks), **Xcode** (free, from the Mac App Store; open it once after installing), and **[Homebrew](https://brew.sh)** for the grammar engine. **Apple Intelligence** turned on is recommended: without it Redpen still runs, minus the confused-word and meaning checks.
+To build it you need **macOS 15.6 or later**, **Xcode 26 or later** (free, from the Mac App Store; open it once after installing), and **[Homebrew](https://brew.sh)** for the grammar engine. **Apple Intelligence** turned on is recommended: without it Redpen still runs, minus the confused-word and meaning checks.
 
 ```sh
 git clone https://github.com/cjaynewton/redpen-grammar-mac.git

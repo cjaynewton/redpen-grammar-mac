@@ -315,7 +315,23 @@ func safetyChecks() {
     check("a line Redpen can't read is kept, not wiped", (try? String(contentsOf: mURL, encoding: .utf8))?.contains("not a record") == true)
     let perms = (try? FileManager.default.attributesOfItem(atPath: mURL.path)[.posixPermissions] as? Int) ?? 0
     check("the trimmed list stays owner-only", perms == 0o600)
+    // A second Redpen trimming while the running one records must not drop fixes (Codex 0.6 review).
+    let writer = Mistakes(url: mURL), trimmer = Mistakes(url: mURL)
+    let recent = { writer.all().filter { $0.date >= now.addingTimeInterval(-86_400) }.count }
+    let before = recent()
+    let group = DispatchGroup()
+    DispatchQueue.global().async(group: group) {
+        for _ in 0..<300 {
+            writer.record(recieve, replacement: "receive", app: "test", at: now)
+            // An old fix each round, so every trim has something to drop and rewrites the file.
+            writer.record(recieve, replacement: "receive", app: "test", at: now.addingTimeInterval(-200 * 86_400))
+        }
+    }
+    DispatchQueue.global().async(group: group) { for _ in 0..<600 { trimmer.trim(now: now) } }
+    group.wait()
+    check("trimming in another copy never drops a new fix", recent() == before + 300)
     try? FileManager.default.removeItem(at: mURL)
+    try? FileManager.default.removeItem(atPath: mURL.path + ".lock")
 
     print(failed == 0 ? "safety checks: all pass" : "safety checks: \(failed) failed")
     if failed > 0 { exit(1) }
