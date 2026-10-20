@@ -94,10 +94,23 @@ enum Agreement {
         if j < toks.count, phraseOpeners.contains(toks[j].lower) {
             guard let k = phraseEnd(from: j + 1, in: toks) else { return nil }
             j = k
+        } else if j < toks.count, toks[j].tag == .verb, toks[j].lower.hasSuffix("ed"), j + 1 < toks.count,
+                  phraseOpeners.contains(toks[j + 1].lower), head != nil {
+            // "The deposit listed in these proposals cover our": a describing "-ed" phrase. The "-ed" word may be the
+            // sentence's own past verb ("The buyer looked at the display stand"), so the verb after must take an object.
+            guard let k = phraseEnd(from: j + 2, in: toks), k + 1 < toks.count, toks[k].tag == .verb,
+                  Apostrophes.canBeVerb(toks[k].lower), !nounEnding(toks[k].lower),
+                  [.determiner, .pronoun].contains(toks[k + 1].tag) else { return nil }
+            j = k
         } else if j < toks.count, ["who", "that", "which"].contains(toks[j].lower) {
-            guard j + 1 < toks.count, toks[j + 1].tag == .verb, toks[j + 1].lower.hasSuffix("s") else { return nil }
+            // "who handles our candles", "who ordered these mugs": the clause's own verb, present or past.
+            guard j + 1 < toks.count, toks[j + 1].tag == .verb,
+                  toks[j + 1].lower.hasSuffix("s") || toks[j + 1].lower.hasSuffix("ed") || pastForms.contains(toks[j + 1].lower),
+                  !Splices.auxiliaries.contains(toks[j + 1].lower), !Splices.reporting.contains(toks[j + 1].lower),
+                  !Rules.clauseVerbs.contains(toks[j + 1].lower) else { return nil }
             var k = j + 2, n = 0
-            while k < toks.count, n < 4, [.determiner, .adjective, .noun, .number, .pronoun].contains(toks[k].tag) { k += 1; n += 1 }
+            while k < toks.count, n < 4, [.determiner, .adjective, .noun, .number, .pronoun].contains(toks[k].tag),
+                  !["which", "what", "whose", "that", "who", "how", "where", "when", "why"].contains(toks[k].lower) { k += 1; n += 1 }
             guard n > 0, toks[k - 1].tag == .noun || toks[k - 1].tag == .pronoun else { return nil }
             j = k
         } else if head == nil {
@@ -116,8 +129,11 @@ enum Agreement {
         // The word after must read as an object or a pause, so "the price list" is never read as "the price lists".
         if j + 1 < toks.count {
             let n = toks[j + 1]
+            // After a phrase or clause the subject is plain, so a noun object is safe: "near the windows attract
+            // attention". Right after the subject it may be one name: "the price list items".
             let ok = [.determiner, .pronoun, .preposition, .adverb, .adjective, .particle, .number, .sentenceTerminator].contains(n.tag)
                 || n.text == "," || ["to", "that", "n't", "not"].contains(n.lower)
+                || n.tag == .verb && n.lower.hasSuffix("ing") || n.tag == .noun && j > end
             guard ok, n.lower != "not" || v.lower != "need" else { return nil }
         }
         return (j, thirdPerson(v.lower))
@@ -199,12 +215,18 @@ enum Agreement {
     static func phraseEnd(from i: Int, in toks: [Token]) -> Int? {
         var j = i, last: Int?
         while j < toks.count, j - i < 6, [.determiner, .adjective, .noun, .number, .adverb].contains(toks[j].tag)
-                || ["'s", "\u{2019}s"].contains(toks[j].lower) || toks[j].tag == .verb && toks[j].lower.hasSuffix("ing") {
+                || ["'s", "\u{2019}s"].contains(toks[j].lower) || toks[j].tag == .verb && toks[j].lower.hasSuffix("ing")
+                || toks[j].tag == .verb && toks[j].lower.hasSuffix("ed") && j > i && toks[j - 1].tag == .determiner {
             if toks[j].tag == .noun { last = j }
             j += 1
         }
         guard let last, last == j - 1 else { return nil }
         return j
+    }
+
+    /// Endings only nouns have ("delivery", "payment"), for words the tagger calls verbs by their place.
+    static func nounEnding(_ w: String) -> Bool {
+        ["tion", "sion", "ment", "ness", "ity", "ery", "ance", "ence", "ship", "hood", "ism"].contains { w.hasSuffix($0) }
     }
 
     static func thirdPerson(_ v: String) -> String {
