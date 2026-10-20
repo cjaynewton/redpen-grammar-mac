@@ -47,12 +47,17 @@ public final class Mistakes: @unchecked Sendable {
     /// Runs `body` holding this object's lock and a lock file every Redpen process shares, so a second copy
     /// trimming the list can't drop a fix the running app is adding. The list itself is replaced on trim,
     /// so the lock lives in its own file beside it.
-    private func exclusive<T>(_ body: () -> T) -> T {
+    /// Without the lock nothing is written: a skipped trim waits for the next launch, a skipped fix is one count.
+    private func exclusive(_ body: () -> Void) {
         lock.lock(); defer { lock.unlock() }
-        let fd = open(url.path + ".lock", O_CREAT | O_RDWR, 0o600)
-        if fd >= 0 { flock(fd, LOCK_EX) }
-        defer { if fd >= 0 { flock(fd, LOCK_UN); close(fd) } }
-        return body()
+        let fd = open(url.path + ".lock", O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { return }
+        defer { close(fd) }
+        var held = flock(fd, LOCK_EX)
+        while held != 0 && errno == EINTR { held = flock(fd, LOCK_EX) }
+        guard held == 0 else { return }
+        defer { flock(fd, LOCK_UN) }
+        body()
     }
 
     public func all() -> [MistakeRecord] {
