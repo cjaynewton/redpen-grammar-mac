@@ -190,8 +190,9 @@ enum Splices {
         var j = subj.end
         if toks[j].tag == .adverb, j + 1 < toks.count { j += 1 }
         let v = toks[j]
-        // ", I think", ", I'd say", ", we hope": an aside, not a second sentence.
-        if subj.kind == .pronoun, toks.prefix(4).contains(where: { reporting.contains($0.lower) }) { return nil }
+        // ", I think", ", I'd say", ", he said no": a short aside, not a second sentence. A full clause with a
+        // saying verb (", he asked for a second meeting") is still a splice.
+        if subj.kind == .pronoun, toks.count <= 4, toks.prefix(4).contains(where: { reporting.contains($0.lower) }) { return nil }
         // ", I'm afraid." and ", it works." are tails a careful writer may keep.
         if afterComma, toks.count <= 2 || toks.count == 3 && beForms.contains(v.lower) && takeClause.contains(toks[2].lower) { return nil }
         return finiteVerb(v, after: subj, strict: true) ? subj.kind : nil
