@@ -12,7 +12,7 @@ PASSED_SIGN_ID="$REDPEN_SIGN_ID"
 [[ -n "$PASSED_SIGN_ID" ]] && REDPEN_SIGN_ID="$PASSED_SIGN_ID"
 BUNDLE_ID="${REDPEN_BUNDLE_ID:-io.github.redpen-mac.Redpen}"
 # The public half of the key that signs each update (the private half stays in the maintainer's keychain).
-SPARKLE_PUBLIC_KEY="SPARKLE_PUBLIC_KEY_PENDING"
+SPARKLE_PUBLIC_KEY="W6ZRcpaIC2RR+xBtiP1ixtreKsoX+MptojZaqzyg+ZU="
 SIGN_ID="${REDPEN_SIGN_ID:--}"   # "-" is an ad-hoc signature
 
 # Apple's on-device model needs the full Xcode toolchain, not just the Command Line Tools.
