@@ -101,6 +101,16 @@ public enum Rules {
     static let twoToo = try! NSRegularExpression(pattern:
         "\\b([Tt]wo) (?:much|many|(?:late|early|soon|far|long|busy|expensive|cheap|small|big|high|low|hot|cold|slow|fast|often|little)(?=\\s*(?:[.,!?;:]|$|(?:to|for|and|or|but|so)\\b)))\\b")
 
+    // "Our distributor agreed collect the cases", "remind the new cashier submit her details": verbs that need "to"
+    // before the next verb. Only a plain verb followed by its own object counts, so "plans review sessions" is safe.
+    static let wantsTo = "(?:agree|agreed|agrees|plan|planned|plans|hope|hoped|hopes|decide|decided|decides|try|tried|tries|attempt|attempted|manage|managed|fail|failed|refuse|refused|promise|promised|intend|intended|intends|aim|aimed|prepare|prepared|arrange|arranged|would like|'d like|\u{2019}d like|want|wants|wanted|need|needs|needed|forget|forgot|remember|remembered|choose|chose|seem|seemed|seems|deserve|deserved|afford|hesitate|expect|expected|expects|wish|wished|offer|offered|threaten|threatened|neglect|neglected)"
+    static let wantsObjectTo = "(?:would like|'d like|\u{2019}d like|want|wants|wanted|need|needs|needed|ask|asks|asked|remind|reminds|reminded|tell|tells|told|expect|expects|expected|allow|allows|allowed|encourage|encourages|encouraged|invite|invites|invited|require|requires|required|urge|urged|advise|advised|instruct|instructed|persuade|persuaded|force|forced|get|got|teach|taught)"
+    static let missingTo = try! NSRegularExpression(pattern:
+        "\\b(?:\(wantsTo)|\(wantsObjectTo) (?:me|you|him|her|us|them|[A-Z][a-z]+|(?:the|our|your|my|his|her|their|this|that|each|every) (?:(?!(?:to|and|or|but|that|not|never)\\b)[a-z]+ ){0,2}(?!(?:to|and|or|but|that)\\b)[a-z]+)) ([a-z]+)(?= (?:the|a|an|our|your|my|his|her|their|its|this|that|these|those|it|them|us|me|him)\\b)")
+    static let notBare: Set<String> = Splices.auxiliaries.union(["be", "been", "not", "never", "always", "also", "just",
+        "really", "only", "even", "still", "already", "all", "both", "back", "out", "up", "off", "in", "on", "over",
+        "about", "for", "with", "from", "into", "help", "please", "and", "or", "but", "so", "that", "than", "if"])
+
     /// Verbs that take a whole clause, where "I" is right: "I hope Maya and I can go".
     static let clauseVerbs: Set<String> = Splices.reporting.union(["wish", "wished", "knew", "hoped", "guessed", "meant",
         "assumed", "supposed", "felt", "realised", "realized", "noticed", "remember", "remembered", "forget", "forgot",
@@ -185,6 +195,12 @@ public enum Rules {
             let fix = word.first == "T" ? "Too" : "too"
             out.append(Issue(range: r, kind: .grammar, message: "More than enough is \u{201C}\(fix)\u{201D}.", replacements: [fix], original: word))
         }
+        for m in missingTo.matches(in: text, range: full) where !out.contains(where: { $0.range.overlaps(m.range(at: 1)) }) {
+            let r = m.range(at: 1), verb = ns.substring(with: r)
+            guard !notBare.contains(verb), isPlainVerb(at: r.location, in: text) else { continue }
+            out.append(Issue(range: r, kind: .grammar, message: "This verb needs \u{201C}to\u{201D} before it: \u{201C}to \(verb)\u{201D}.",
+                             replacements: ["to " + verb], original: verb))
+        }
         let singular = ["have": "has", "are": "is", "were": "was", "do": "does", "don't": "doesn't"]
         for m in eachHave.matches(in: text, range: full) where !out.contains(where: { $0.range.overlaps(m.range(at: 1)) }) {
             let v = ns.substring(with: m.range(at: 1))
@@ -211,6 +227,18 @@ public enum Rules {
                              replacements: [rep], original: last))
         }
         return out
+    }
+
+    /// Whether the word at `loc` is a verb in its plain form ("collect", not "collects", "collected" or "collecting").
+    static func isPlainVerb(at loc: Int, in text: String) -> Bool {
+        guard let r = Range(NSRange(location: loc, length: 0), in: text) else { return false }
+        let tagger = NLTagger(tagSchemes: [.lexicalClass, .lemma])
+        tagger.string = text
+        let (tag, wr) = tagger.tag(at: r.lowerBound, unit: .word, scheme: .lexicalClass)
+        let w = text[wr].lowercased()
+        guard tag == .verb, !w.hasSuffix("ing"), !w.hasSuffix("ed") || w.hasSuffix("eed"),
+              let lemma = tagger.tag(at: r.lowerBound, unit: .word, scheme: .lemma).0?.rawValue else { return false }
+        return lemma.lowercased() == w
     }
 
     /// Whether the word at `loc` is a plural noun in its sentence: tagged a noun, and its lemma is not the word itself.
