@@ -95,6 +95,12 @@ public enum Rules {
     static let loneSubject = try! NSRegularExpression(pattern:
         "\\b([a-z]+) (I|he|she|we|they)\\b(?=\\s*(?:[.,!?;:]|$|(?:the|a|an|our|your|his|her|their|my|this|that|these|those|about|before|after|at|on|in|with|for|to|from|until|tomorrow|today|tonight)\\b))")
 
+    // "We have too interviews booked": "too" never comes right before a plural noun, so the number was meant.
+    // "two much", "two late.": "two" never comes before "much" or a describing word that ends the phrase.
+    static let tooTwo = try! NSRegularExpression(pattern: "\\b([Tt]oo) ([a-z]+s)\\b")
+    static let twoToo = try! NSRegularExpression(pattern:
+        "\\b([Tt]wo) (?:much|many|(?:late|early|soon|far|long|busy|expensive|cheap|small|big|high|low|hot|cold|slow|fast|often|little)(?=\\s*(?:[.,!?;:]|$|(?:to|for|and|or|but|so)\\b)))\\b")
+
     /// Verbs that take a whole clause, where "I" is right: "I hope Maya and I can go".
     static let clauseVerbs: Set<String> = Splices.reporting.union(["wish", "wished", "knew", "hoped", "guessed", "meant",
         "assumed", "supposed", "felt", "realised", "realized", "noticed", "remember", "remembered", "forget", "forgot",
@@ -109,6 +115,8 @@ public enum Rules {
         ("insist", ["for", "in", "to"], "on"), ("insisted", ["for", "in", "to"], "on"), ("depend", ["of", "in", "from"], "on"),
         ("depends", ["of", "in", "from"], "on"), ("consist", ["in", "from"], "of"), ("consists", ["in", "from"], "of"),
         ("capable", ["to", "for"], "of"), ("responsible", ["of", "on"], "for"), ("afraid", ["from", "for"], "of"),
+        ("comply", ["to"], "with"), ("complies", ["to"], "with"), ("complied", ["to"], "with"), ("complying", ["to"], "with"),
+        ("similar", ["with"], "to"), ("aware", ["about"], "of"), ("superior", ["than"], "to"), ("inferior", ["than"], "to"),
         ("married", ["with"], "to"), ("listen", ["at"], "to"), ("listened", ["at"], "to"), ("entitled", ["a", "an", "the", "one"], "to"),
     ]
     static let collocationRegex: NSRegularExpression = {
@@ -167,6 +175,16 @@ public enum Rules {
             out.append(Issue(range: r, kind: .grammar, message: "After \u{201C}\(before)\u{201D} the pronoun is \u{201C}\(fix)\u{201D}.",
                              replacements: [fix], original: pronoun))
         }
+        for m in tooTwo.matches(in: text, range: full) where isPluralNoun(at: m.range(at: 2).location, in: text) {
+            let r = m.range(at: 1), word = ns.substring(with: r)
+            let fix = word.first == "T" ? "Two" : "two"
+            out.append(Issue(range: r, kind: .grammar, message: "The number is \u{201C}\(fix)\u{201D}.", replacements: [fix], original: word))
+        }
+        for m in twoToo.matches(in: text, range: full) {
+            let r = m.range(at: 1), word = ns.substring(with: r)
+            let fix = word.first == "T" ? "Too" : "too"
+            out.append(Issue(range: r, kind: .grammar, message: "More than enough is \u{201C}\(fix)\u{201D}.", replacements: [fix], original: word))
+        }
         let singular = ["have": "has", "are": "is", "were": "was", "do": "does", "don't": "doesn't"]
         for m in eachHave.matches(in: text, range: full) where !out.contains(where: { $0.range.overlaps(m.range(at: 1)) }) {
             let v = ns.substring(with: m.range(at: 1))
@@ -193,6 +211,16 @@ public enum Rules {
                              replacements: [rep], original: last))
         }
         return out
+    }
+
+    /// Whether the word at `loc` is a plural noun in its sentence: tagged a noun, and its lemma is not the word itself.
+    static func isPluralNoun(at loc: Int, in text: String) -> Bool {
+        guard let r = Range(NSRange(location: loc, length: 0), in: text) else { return false }
+        let tagger = NLTagger(tagSchemes: [.lexicalClass, .lemma])
+        tagger.string = text
+        let (tag, wr) = tagger.tag(at: r.lowerBound, unit: .word, scheme: .lexicalClass)
+        guard tag == .noun, let lemma = tagger.tag(at: r.lowerBound, unit: .word, scheme: .lemma).0?.rawValue else { return false }
+        return lemma.lowercased() != text[wr].lowercased()
     }
 
     /// Whether the word at `loc` reads as a verb in its sentence ("invited Maya and I"), not a noun ("the buyer and I").
