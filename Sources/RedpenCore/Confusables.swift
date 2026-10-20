@@ -15,6 +15,7 @@ public enum Confusables {
         ["council", "counsel"], ["elicit", "illicit"], ["precede", "proceed"], ["peak", "peek", "pique"],
         ["weather", "whether"], ["quite", "quiet"], ["choose", "chose"], ["personal", "personnel"],
         ["desert", "dessert"], ["loath", "loathe"], ["everyday", "every day"], ["maybe", "may be"],
+        ["meat", "meet"], ["brake", "break"], ["plane", "plain"], ["wave", "waive"],
     ]
 
     /// Short meanings so the small model can tell the words apart.
@@ -37,6 +38,9 @@ public enum Confusables {
         "personal": "private, individual", "personnel": "staff", "desert": "dry land, or abandon", "dessert": "sweet course",
         "loath": "unwilling", "loathe": "hate", "everyday": "ordinary (adjective)", "every day": "each day",
         "maybe": "perhaps", "may be": "might be",
+        "meat": "flesh as food (noun)", "meet": "come together with (verb)", "brake": "the stopping pedal",
+        "break": "snap, or a pause", "plane": "an aircraft, or a flat surface", "plain": "simple, unpatterned",
+        "wave": "a hand motion, or in water", "waive": "give up a right or a charge",
     ]
 
     static let lookup: [String: [String]] = {
@@ -88,7 +92,7 @@ public enum Confusables {
     }
 
     /// Phrases where the word is right whatever the model thinks: "food desert", "the personnel are".
-    static let locked = try! NSRegularExpression(pattern: "\\bfood deserts?\\b|\\bpersonnel (?:are|were|is|was|have|had|will|who|in|on|at|from)\\b|\\b(?:paid|key|military|medical|sales|support|security|team) personnel\\b", options: [.caseInsensitive])
+    static let locked = try! NSRegularExpression(pattern: "\\bfood deserts?\\b|\\bpersonnel (?:are|were|is|was|have|had|will|who|in|on|at|from)\\b|\\b(?:paid|key|military|medical|sales|support|security|team) personnel\\b|\\b(?:the|this|that|bad|good|cold|warm|wet|hot|dry|rough|fine|poor|severe|mild) weather\\b|\\bweather (?:forecast|report|conditions?|warning|service|station)\\b", options: [.caseInsensitive])
 
     static func isLocked(_ text: String, _ r: NSRange) -> Bool {
         locked.matches(in: text, range: NSRange(location: 0, length: (text as NSString).length)).contains { NSIntersectionRange($0.range, r).length > 0 }
