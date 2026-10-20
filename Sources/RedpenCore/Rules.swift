@@ -107,6 +107,11 @@ public enum Rules {
         return try! NSRegularExpression(pattern: alts, options: [.caseInsensitive])
     }()
 
+    // "you're revised invoice", "they're latest catalog": these words only ever follow something owned.
+    static let owned = "(?:latest|newest|own|first|next|last|final|revised|updated|current|favourite|favorite|main|usual|previous|original|entire|whole|upcoming|existing|new|old|recent|monthly|weekly|annual|yearly|daily)"
+    static let contractedOwner = try! NSRegularExpression(pattern: "\\b(you['\u{2019}]re|they['\u{2019}]re|we['\u{2019}]re|it['\u{2019}]s) \(owned) [a-z]+\\b(?! (?:is|are|was|were|and|or|but|to|for|of|in|on|at|with|by|from|as|than|so|that|if|when|because)\\b)", options: [.caseInsensitive])
+    static let ownerForm = ["you're": "your", "they're": "their", "we're": "our", "it's": "its"]
+
     static func patternIssues(_ text: String) -> [Issue] {
         let ns = text as NSString
         let full = NSRange(location: 0, length: ns.length)
@@ -138,6 +143,14 @@ public enum Rules {
             let v = ns.substring(with: m.range(at: 1))
             out.append(Issue(range: m.range(at: 1), kind: .grammar, message: "\"Each\" takes a singular verb",
                              replacements: [singular[v.lowercased()] ?? v], original: v))
+        }
+        for m in contractedOwner.matches(in: text, range: full) {
+            let r = m.range(at: 1)
+            let word = ns.substring(with: r)
+            guard var fix = ownerForm[word.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")] else { continue }
+            if word.first?.isUppercase == true { fix = fix.prefix(1).uppercased() + fix.dropFirst() }
+            out.append(Issue(range: r, kind: .grammar, message: "Something is owned here: \u{201C}\(fix)\u{201D}.",
+                             replacements: [fix], original: word))
         }
         for m in collocationRegex.matches(in: text, range: full) {
             let phrase = ns.substring(with: m.range)
