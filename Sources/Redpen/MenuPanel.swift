@@ -29,7 +29,7 @@ final class PanelModel: ObservableObject {
     weak var host: PanelHost?
     @Published var enabled = true { didSet { guard enabled != oldValue else { return }; host?.config.enabled = enabled; host?.config.save() } }
     /// Which page the panel shows. Settings slides in place of the menu instead of opening a window.
-    enum Page { case main, settings, fixBox, advanced }
+    enum Page { case main, settings, fixBox, advanced, about }
     @Published private(set) var page = Page.main { didSet { if page != oldValue { DispatchQueue.main.async { self.onLayoutChange?() } } } }
     /// The settings being edited, made fresh each time Settings opens so it starts from the saved file.
     @Published private(set) var settings: SettingsModel?
@@ -116,7 +116,7 @@ final class PanelModel: ObservableObject {
     func back() -> Bool {
         switch page {
         case .main: return false
-        case .settings: go(.main)
+        case .settings, .about: go(.main)
         case .fixBox, .advanced: go(.settings)
         }
         return true
@@ -205,6 +205,7 @@ enum Fonts {
 
 struct PanelView: View {
     @ObservedObject var model: PanelModel
+    @ObservedObject private var updates = Updates.shared
     var close: () -> Void = {}
     @Environment(\.colorScheme) private var scheme
 
@@ -218,6 +219,7 @@ struct PanelView: View {
             case .settings: model.settings.map { SettingsPage(model: $0, panel: model).transition(.push(from: model.direction)) }
             case .fixBox: model.settings.map { FixBoxPage(model: $0, panel: model).transition(.push(from: model.direction)) }
             case .advanced: model.settings.map { AdvancedPage(model: $0, panel: model).transition(.push(from: model.direction)) }
+            case .about: AboutPage(panel: model).transition(.push(from: model.direction))
             }
         }
         .clipped()
@@ -382,11 +384,24 @@ struct PanelView: View {
 
     private var footer: some View {
         HStack {
-            Text("Redpen \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")")
-                .font(.system(size: 13)).foregroundStyle(.tertiary)
+            if let v = updates.waiting {
+                // An update found by the daily check waits here rather than interrupting your writing.
+                Button("Update to \(v) \u{203A}") { model.leave(); updates.checkNow() }
+                    .buttonStyle(.plain).foregroundStyle(Color.accentColor).font(.system(size: 13, weight: .medium))
+            } else {
+                Text("Redpen \(About.version)").font(.system(size: 13)).foregroundStyle(.tertiary)
+            }
             Spacer()
             Button("Settings") { model.go(.settings) }
-            Button("Quit") { NSApp.terminate(nil) }
+            // Quit lives in here so nobody turns checking off by accident.
+            Menu("Options") {
+                Button("Check for Updates\u{2026}") { model.leave(); updates.checkNow() }
+                Button("Report an Issue\u{2026}") { model.leave(); NSWorkspace.shared.open(About.issueURL(deepCheck: model.deepName)) }
+                Button("About Redpen Grammar") { model.go(.about) }
+                Divider()
+                Button("Quit Redpen") { NSApp.terminate(nil) }
+            }
+            .menuStyle(.button).fixedSize()
         }
         .padding(.horizontal, 4)
     }
@@ -524,7 +539,7 @@ final class MenuPanel: NSObject, NSWindowDelegate {
         model.host = host
         model.rendering = true
         model.refresh()
-        if page != .main { model.go(.settings) }
+        if page == .about { model.go(.about) } else if page != .main { model.go(.settings) }
         if page == .fixBox || page == .advanced { model.go(page) }
         model.set("claude", Helpers.claude(path: host.config.claudeExecutable))
         model.set("chatgpt", Helpers.codex())

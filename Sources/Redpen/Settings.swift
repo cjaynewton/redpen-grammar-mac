@@ -13,7 +13,7 @@ final class SettingsModel: ObservableObject {
             if openAtLogin { try? SMAppService.mainApp.register() } else { try? SMAppService.mainApp.unregister() }
         }
     }
-    @Published var autoUpdate: Bool { didSet { Updates.automatic = autoUpdate } }
+    @Published var autoUpdate: Bool { didSet { Updates.shared.automatic = autoUpdate } }
     @Published var engineRunning: Bool?
     /// Whether each Deep check helper is ready, keyed "claude", "chatgpt", "gemini".
     @Published var helpers: [String: HelperRow.State] = [:]
@@ -23,7 +23,7 @@ final class SettingsModel: ObservableObject {
         self.config = config
         self.onChange = onChange
         self.openAtLogin = SMAppService.mainApp.status == .enabled
-        self.autoUpdate = Updates.automatic
+        self.autoUpdate = Updates.shared.automatic
     }
 
     func checkEngine() { Task { engineRunning = await LanguageTool.isRunning() } }
@@ -67,7 +67,7 @@ final class SettingsModel: ObservableObject {
 // MARK: - Shared pieces
 
 /// A page header: a back button on the left, the page's name in the middle.
-private struct NavHead: View {
+struct NavHead: View {
     let back: String
     let title: String
     let action: () -> Void
@@ -208,7 +208,7 @@ struct SettingsPage: View {
                     Switch(label: "Open at login", on: $model.openAtLogin)
                     Row(label: "Check for updates", sub: "Once a day. Nothing you write is sent.") {
                         HStack(spacing: 10) {
-                            Button("Check now") { Updates.checkNow() }
+                            Button("Check now") { Updates.shared.checkNow() }
                             Toggle("Check for updates", isOn: $model.autoUpdate).toggleStyle(.switch).labelsHidden().tint(.green)
                         }
                     }
