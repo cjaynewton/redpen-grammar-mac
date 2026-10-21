@@ -34,6 +34,8 @@ rm -rf "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices" "$APP
 # Newsreader, the card and panel serif (SIL Open Font License, Resources/Fonts/OFL.txt).
 mkdir -p "$APP/Contents/Resources"
 cp -R Resources/Fonts "$APP/Contents/Resources/Fonts"
+# The app icon: a Gloock "r." in the Retail Dark palette (Resources/Icon/icon-source.html is the drawing).
+cp Resources/Icon/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -41,6 +43,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
   <key>CFBundleName</key><string>Redpen Grammar</string>
   <key>CFBundleExecutable</key><string>Redpen</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.8</string>
   <key>CFBundleVersion</key><string>8</string>
