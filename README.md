@@ -21,7 +21,7 @@ Everything runs on your Mac. Your writing is never sent anywhere unless you choo
 - **Spelling that reads the sentence:** with Apple Intelligence on, the first suggestion is the word the sentence needs. "I liked it, thougt it cost too much" offers *though*; "I thougt about it" offers *thought*. The choice is only ever one of the dictionary's own suggestions.
 - **Your patterns** (in the menu) shows which mistakes keep coming back this week, and whether each is going up or down. The record stays on your Mac, holds only the flagged words and the fix, never your surrounding text, and keeps the last 90 days.
 - **Terminal:** when you type a sentence (not a command) in Terminal, or another terminal that tells the Mac which pane has focus, a small bubble offers to fix it. Where a terminal doesn't say, Redpen stays quiet rather than risk fixing the wrong tab.
-- **Deep check** (optional): sends the paragraph you're in to Claude, ChatGPT or Gemini through each one's official command-line tool and the plan you already have: [Claude Code](https://claude.com/claude-code) for Claude, [Codex](https://github.com/openai/codex) for ChatGPT, Google's [Antigravity CLI](https://antigravity.google/docs/cli/headless/) for Gemini. Pick one in **Settings**, under **Advanced**, with **Fast** or **Best**. It shows a revised version and a list of changes. When the text is an email that asks for something, it adds up to three notes on how to make it easier to answer. Switch the window to **Email** to have it rewritten as one: the ask up top, one ask, easy to say yes to. The ten email rules are in `Sources/RedpenCore/DeepPrompt.swift`, written in Redpen's own words from ideas in Joanna Wiebe's Copyhackers courses and Todd Rogers and Jessica Lasky-Fink's *Writing for Busy Readers*.
+- **Deep check** (optional): sends the paragraph you're in to Claude, ChatGPT or Gemini, using the plan you already pay for. Pick one in **Settings > Advanced**. It shows a cleaned-up version and a list of what changed. If the text is an email asking for something, it adds up to three tips to make it easier to say yes to. Switch to **Email** to have it rewritten that way.
 
 <p align="center">
 <picture>
@@ -44,7 +44,20 @@ Click a mistake and you choose, in Settings, what the fix box shows:
 </tr>
 </table>
 
-Redpen never reads password managers, password fields, or browser pages whose title names a bank, card company, broker or payment app (Canadian, US, UK and Australian names are built in, and you can add more in the settings file). Its log holds app names and counts, never your writing, and the log, your settings and your mistakes list can only be opened by your own Mac account. Text goes to the grammar engine only when the engine on your Mac belongs to your account. Deep check runs Claude Code with its tools, MCP servers, skills and hooks switched off, Codex read-only in an empty folder with its command, browser and plugin tools, web search and MCP servers switched off (it still reads your personal `~/.codex/AGENTS.md`; Codex has no way to skip it), and the Antigravity CLI in an empty folder inside its sandbox, which restricts terminal commands, with commands that need approval refused. Commands you have already allowed in your own Antigravity settings stay allowed within that sandbox; the Antigravity CLI has no way to switch them off. Hooks your organisation enforces through a managed policy can't be switched off by Redpen. Once a day Redpen asks this project's GitHub release page whether a newer version is out, and sends nothing you wrote; switch **Check for updates** off in Settings to stop it. Each update is checked against Redpen's signing key before it installs.
+## Your privacy
+
+- Redpen checks your writing on your Mac. Nothing you type leaves it unless you use Deep check.
+- It never reads password boxes, password managers, or bank and payment websites. You can add more sites in the settings file.
+- Your settings, mistakes list and log are locked so only you can open them. The log lists app names and counts, never your words.
+- Deep check sends only the paragraph you ask it to check, and only to the AI you picked. Redpen switches off that AI's extra tools first, so it can only read the text and reply.
+- Once a day Redpen asks GitHub whether there's a newer version. It sends nothing you wrote. You can turn this off in Settings.
+
+<details>
+<summary>Technical details</summary>
+
+Redpen never reads password managers, password fields, or browser pages whose title names a bank, card company, broker or payment app (Canadian, US, UK and Australian names are built in, and you can add more in the settings file). Its log holds app names and counts, never your writing, and the log, your settings and your mistakes list can only be opened by your own Mac account. Text goes to the grammar engine only when the engine on your Mac belongs to your account. Deep check uses each AI's official command-line tool: [Claude Code](https://claude.com/claude-code) for Claude, [Codex](https://github.com/openai/codex) for ChatGPT, and Google's [Antigravity CLI](https://antigravity.google/docs/cli/headless/) for Gemini. It runs Claude Code with its tools, MCP servers, skills and hooks switched off, Codex read-only in an empty folder with its command, browser and plugin tools, web search and MCP servers switched off (it still reads your personal `~/.codex/AGENTS.md`; Codex has no way to skip it), and the Antigravity CLI in an empty folder inside its sandbox, which restricts terminal commands, with commands that need approval refused. Commands you have already allowed in your own Antigravity settings stay allowed within that sandbox; the Antigravity CLI has no way to switch them off. Hooks your organisation enforces through a managed policy can't be switched off by Redpen. Each update is checked against Redpen's signing key before it installs.
+
+</details>
 
 ## How it checks
 
@@ -140,7 +153,7 @@ The test sets were written before tuning and the blind sets were scored once. If
 
 ## Not affiliated
 
-Redpen for Mac is an independent project. It is not related to [RedPen](https://redpen.cc), the open-source proofreading tool for technical documents, or to Grammarly.
+Redpen Grammar is an independent project. It is not related to [RedPen](https://redpen.cc), the open-source proofreading tool for technical documents.
 
 ## License
 
