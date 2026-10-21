@@ -251,7 +251,9 @@ final class Watcher {
         let ns = text as NSString
         let pr = ns.paragraphRange(for: window(el, text))
         let slice = ns.substring(with: pr)
-        return ("\(pr.location)|\(slice)", slice, pr)
+        // The rules a switched-on tip adds are part of the key, so switching the tip re-checks the text.
+        let extra = StyleTip.languageToolRules(config.houseStyle.tips).joined(separator: ",")
+        return ("\(pr.location)|\(extra)|\(slice)", slice, pr)
     }
 
     private func runLanguageTool(_ el: AXUIElement, _ text: String) {
@@ -261,7 +263,8 @@ final class Watcher {
         Task { @MainActor in
             defer { self.ltInFlight = false }
             // No answer (engine starting, timed out, or not LanguageTool): try this text again in a few seconds.
-            guard let found = await LanguageTool.checkIfReady(slice) else { self.ltFailedAt = Date(); return }
+            let enabling = StyleTip.languageToolRules(self.config.houseStyle.tips)
+            guard let found = await LanguageTool.checkIfReady(slice, enabling: enabling) else { self.ltFailedAt = Date(); return }
             self.ltIssues = found.map { var i = $0; i.range = i.range.shifted(by: pr.location); return i }
             self.ltKey = key
         }
@@ -487,6 +490,12 @@ final class Watcher {
         }
         card.fixAll = fixAll
         card.title = Self.cardTitle(issue)
+        if let id = issue.tip, let tip = StyleTip.find(id) {
+            card.kind = "Style tip \u{00B7} \(tip.group.name)"
+            card.examples = TipExamples.of(id)
+            // One click turns this tip off, so a tip that annoys never costs more than that.
+            card.stop = .init(title: "Stop these tips") { [weak self] in self?.stopTip(id) }
+        }
         if let (s, at) = Spelling.sentence(around: issue.range, in: lastText), (s as NSString).length <= 280 {
             // Trailing spaces and line breaks only; the mistake's offset counts from the sentence's start.
             var text = s
@@ -501,9 +510,18 @@ final class Watcher {
         panel.show(card, below: anchor, avoid: marks.filter { $0.issue != issue }.map(\.rect))
     }
 
+    /// Switches one style tip off from its fix box, saved like a change in Settings.
+    func stopTip(_ id: String) {
+        config.houseStyle.tips.removeAll { $0 == id }
+        config.save()
+        Log.note("style tip \(id) switched off from the fix box")
+        lastQuickAt = .distantPast
+    }
+
     /// What is wrong in a few words, the title on the Whole sentence card.
     static func cardTitle(_ issue: Issue) -> String {
         if issue.tentative { return "Maybe a mistake" }
+        if let id = issue.tip, let tip = StyleTip.find(id) { return tip.name }
         switch issue.kind {
         case .spelling: return issue.replacements.isEmpty ? "Unknown word" : "Misspelled word"
         case .grammar: return issue.replacements.first == "" ? "Extra word" : "Grammar fix"
@@ -586,17 +604,65 @@ final class Watcher {
         panel.hide()
         let app = NSWorkspace.shared.frontmostApplication?.processIdentifier
         Log.note("fix all: \(result.fixed.count) in \(bundleID)")
+        applyEach(result.fixed, in: el, app: app, label: "fix all")
+    }
+
+    /// Applies each fix on its own with its first suggestion, last first so earlier positions stay put.
+    private func applyEach(_ fixes: [Issue], in el: AXUIElement, app: pid_t?, label: String) {
         fixAllRunning = true
         Task { @MainActor in
             defer { self.fixAllRunning = false }
-            for i in result.fixed.reversed() {
+            for i in fixes.reversed() {
                 // Stop the moment the writer moves to another field or app: a paste would land there.
                 guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app, self.stillFocused(el) else {
-                    Log.note("fix all: stopped, focus moved"); return
+                    Log.note("\(label): stopped, focus moved"); return
                 }
                 guard let pasted = self.apply(i, i.replacements[0], in: el) else { return }
                 if pasted { try? await Task.sleep(for: .milliseconds(800)) }
             }
+        }
+    }
+
+    /// Clean up this paragraph (Control-Option-C): fillers, doubled words and false starts out of the paragraph at
+    /// the cursor. Every change is shown first; nothing goes in until Accept all.
+    func cleanUpAtCursor() {
+        if panel.isVisible { panel.hide() }
+        guard let el = element, !lastText.isEmpty, !fixAllRunning else { NSSound.beep(); return }
+        let ns = lastText as NSString
+        let cur = AX.range(el, kAXSelectedTextRangeAttribute)?.location ?? 0
+        let pr = ns.paragraphRange(for: NSRange(location: min(cur, ns.length), length: 0))
+        let para = ns.substring(with: pr)
+        let text = lastText
+        Task { @MainActor [weak self] in
+            let found = await Cleanup.changes(para)
+            guard let self else { return }
+            guard let current = self.element, CFEqual(current, el), self.lastText == text else {
+                Log.note("clean up: the text changed while checking"); return
+            }
+            guard !found.isEmpty else { Log.note("clean up: nothing to take out in \(self.bundleID)"); NSSound.beep(); return }
+            let fixes = found.map { c -> Issue in
+                Issue(range: c.range.shifted(by: pr.location), kind: .voice, message: "Clean up", replacements: [c.replacement], original: c.original)
+            }
+            let n = found.filter { $0.reason != .capital }.count
+            var card = SuggestionPanel.Card(kind: "Clean up \u{00B7} \(n) change\(n == 1 ? "" : "s") \u{00B7} \u{2303}\u{2325}C",
+                                            color: IssueKind.voice.color, marks: [], message: nil, why: nil, example: nil)
+            card.title = "Clean up this paragraph"
+            card.cleanup = (para.trimmingCharacters(in: .newlines), found.map { ($0.range, $0.replacement) })
+            let app = NSWorkspace.shared.frontmostApplication?.processIdentifier
+            card.primary = .init(title: "Accept all") { [weak self] in
+                guard let self else { return }
+                Log.note("clean up: \(fixes.count) changes in \(self.bundleID)")
+                self.applyEach(fixes, in: el, app: app, label: "clean up")
+            }
+            card.ignore = .init(title: "Cancel") {}
+            let anchor = self.lineRects(el, NSRange(location: pr.location, length: min(1, pr.length))).first.map(AX.toCocoa)
+                ?? AX.frame(el).map { f in let c = AX.toCocoa(f); return CGRect(x: c.minX + 8, y: c.minY, width: 1, height: 1) }
+            guard let anchor else { NSSound.beep(); return }
+            self.watcherCard = true
+            self.cardMark = nil
+            self.panel.style = self.config.cardStyle
+            self.panel.appearance = self.config.cardAppearance
+            self.panel.show(card, below: anchor, avoid: [])
         }
     }
 

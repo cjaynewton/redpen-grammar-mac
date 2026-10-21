@@ -61,8 +61,7 @@ public enum Rules {
             }
         }
 
-        out += StarterSet.issues(text, sets: style.starterSets,
-                                 skip: longform ? ownWords(style) : [])
+        out += StyleTip.issues(text, on: style.tips, skip: longform ? ownWords(style) : [])
 
         if style.flagOtherLanguages { out += languageIssues(text) }
         return out

@@ -374,7 +374,174 @@ func contextChecks() async {
     print("context spelling: \(flagged)/\(total) flagged, \(right)/\(total) first suggestion right")
 }
 
-if CommandLine.arguments.contains("--context") { await contextChecks() }
+/// Style tips on finished writing (`--tips file.tsv ...`, add `--show` to print each mark): how many paragraphs each
+/// tip marks, so a noisy tip shows up. Every tip on; LanguageTool supplies the Hidden doer tip when it is running.
+@MainActor
+func tipNoise() async {
+    let a = CommandLine.arguments
+    let files = a.indices.filter { a[$0] == "--tips" || (a[$0].hasSuffix(".tsv") && $0 > 0) }.compactMap { i -> String? in
+        a[i] == "--tips" ? nil : a[i] }
+    let show = a.contains("--show")
+    // Default settings plus every tip: the writer's own lists would otherwise claim some of the same words.
+    var style = HouseStyle()
+    style.tips = StyleTip.all.map(\.id)
+    let ltOn = await LanguageTool.isRunning()
+    print("LanguageTool running:", ltOn)
+    var totals: [String: (paras: Int, marks: Int)] = [:]
+    var paraTotal = 0
+    for file in files {
+        let tsv = (try? String(contentsOfFile: file, encoding: .utf8)) ?? ""
+        let rows = tsv.split(separator: "\n").map { $0.split(separator: "\t", omittingEmptySubsequences: false).map(String.init) }
+            .filter { $0.count > 1 && ($0.count < 3 || $0[2].isEmpty) }
+        var per: [String: (paras: Int, marks: Int)] = [:]
+        for r in rows {
+            let text = r[1]
+            var found = Rules.check(text, longform: true, style: style).filter { $0.tip != nil }
+            if ltOn { found += await LanguageTool.check(text, enabling: StyleTip.languageToolRules(style.tips)).filter { $0.tip != nil } }
+            found = Engine.outsideQuotes(found, in: text)
+            for id in Set(found.compactMap(\.tip)) {
+                let n = found.filter { $0.tip == id }.count
+                var v = per[id] ?? (0, 0); v.paras += 1; v.marks += n; per[id] = v
+            }
+            if show { for i in found { print("  [\(i.tip!)] \"\(i.original)\" -> \(i.replacements.first.map { "\"\($0)\"" } ?? "(flag)")   | \(text.prefix(140))") } }
+        }
+        print("\n\(file.split(separator: "/").last!) (\(rows.count) finished paragraphs)")
+        for t in StyleTip.all {
+            let v = per[t.id] ?? (0, 0)
+            print("  \(t.id.padding(toLength: 10, withPad: " ", startingAt: 0)) \(v.paras) paragraphs, \(v.marks) marks")
+            var tv = totals[t.id] ?? (0, 0); tv.paras += v.paras; tv.marks += v.marks; totals[t.id] = tv
+        }
+        paraTotal += rows.count
+    }
+    print("\nAll sets (\(paraTotal) paragraphs)")
+    for t in StyleTip.all {
+        let v = totals[t.id] ?? (0, 0)
+        print(String(format: "  %@ %3d paragraphs (%.1f%%), %3d marks", t.id.padding(toLength: 10, withPad: " ", startingAt: 0), v.paras,
+                     paraTotal == 0 ? 0 : 100 * Double(v.paras) / Double(paraTotal), v.marks))
+    }
+}
+
+/// Style tips (`--tips-check`): every example in the app is caught by its own tip, every rewrite is left alone,
+/// and the settings, calm mode and cuts behave.
+@MainActor
+func tipChecks() async {
+    var failed = 0
+    func check(_ name: String, _ ok: Bool) { print(ok ? "  pass" : "  FAIL", name); if !ok { failed += 1 } }
+    let ltOn = await LanguageTool.isRunning()
+    func found(_ text: String, _ tip: String) async -> [Issue] {
+        var style = HouseStyle(); style.tips = [tip]
+        var all = Rules.check(text, longform: false, style: style).filter { $0.tip == tip }
+        if tip == "passive" { all += await LanguageTool.check(text, enabling: StyleTip.languageToolRules(style.tips)).filter { $0.tip == tip } }
+        return all
+    }
+    for tip in StyleTip.all {
+        guard let ex = TipExamples.of(tip.id) else { check("\(tip.id) has examples", false); continue }
+        check("\(tip.id) has 3 or 4 examples", (3...4).contains(ex.pairs.count))
+        if tip.id == "passive" && !ltOn { print("  skip passive examples, LanguageTool isn't running"); continue }
+        for pair in ex.pairs {
+            let before = pair.beforeRuns.map(\.0).joined(), after = pair.afterRuns.map(\.0).joined()
+            var at = 0, marked = NSRange(location: 0, length: 0)
+            for (t, m) in pair.beforeRuns { let n = (t as NSString).length; if m { marked = NSRange(location: at, length: n) }; at += n }
+            let hit = await found(before, tip.id).contains { $0.range.overlaps(marked) }
+            check("\(tip.id) catches: \(before)", hit)
+            check("\(tip.id) leaves the rewrite alone: \(after)", await found(after, tip.id).isEmpty)
+        }
+        let text = [ex.why, ex.leaveWhen] + ex.pairs.flatMap { [$0.before, $0.after] }
+        check("\(tip.id) examples have no em dashes", !text.joined().contains("\u{2014}"))
+    }
+    // Near misses each tip must leave alone.
+    for (tip, text) in [("softeners", "What kind of roof do you have?"), ("softeners", "This sort of job takes two days."),
+                        ("softeners", "I think about it every day."), ("filler", "I just finished the deck."),
+                        ("filler", "As you know, the price went up."), ("filler", "It was actually cheaper to rebuild."),
+                        ("unsourced", "Our research shows a gap in the market."), ("promises", "The loan is guaranteed by the bank."),
+                        ("promises", "It is the best time to book."), ("nominal", "The decision is yours."),
+                        ("apology", "We are sorry to see you go."), ("slowstart", "We wanted to reach out to new customers this spring."),
+                        ("twice", "The account is past due.")] {
+        check("\(tip) leaves alone: \(text)", await found(text, tip).isEmpty)
+    }
+    // Cuts read cleanly.
+    func cutText(_ text: String, _ tip: String) async -> String? {
+        guard let i = await found(text, tip).first, let r = i.replacements.first else { return nil }
+        return (text as NSString).replacingCharacters(in: i.range, with: r)
+    }
+    check("cut mid-sentence", await cutText("I basically need the quote.", "filler") == "I need the quote.")
+    check("cut between commas", await cutText("It was, you know, late.", "filler") == "It was late.")
+    check("cut before a question mark", await cutText("Can you send it Friday, you know?", "filler") == "Can you send it Friday?")
+    check("cut at the start capitalises the next word", await cutText("I think the price is fair.", "softeners") == "The price is fair.")
+    check("verb noun keeps the tense", await cutText("We made a decision on Monday.", "nominal") == "We decided on Monday.")
+    check("verb noun keeps the capital", await cutText("Make a decision today.", "nominal") == "Decide today.")
+    check("a passive that names the doer is left alone", ltOn ? await found("The invoice was sent by our office on Monday.", "passive").isEmpty : true)
+    check("a passive with a doer-free verb is left alone", ltOn ? await found("The store was built in 1952.", "passive").isEmpty : true)
+
+    // Settings from 0.8 keep what they had on.
+    let old = try? JSONDecoder().decode(HouseStyle.self, from: Data(#"{"starterSets":["plain","hedging","ai"]}"#.utf8))
+    check("0.8 settings keep their tips, hedging becomes softeners", old?.tips == ["plain", "softeners", "ai"])
+    check("new settings have every tip off", HouseStyle().tips.isEmpty)
+    // Calm mode hides house rules but keeps a tip the writer switched on.
+    var tipIssue = Issue(range: NSRange(location: 0, length: 5), kind: .voice, message: "m", replacements: [], original: "maybe")
+    tipIssue.tip = "softeners"
+    let rule = Issue(range: NSRange(location: 6, length: 1), kind: .voice, message: "No em dashes.", replacements: [], original: "x")
+    check("calm mode keeps a switched-on tip", Engine.calm([tipIssue, rule]) == [tipIssue])
+    check("fix all never applies a tip", Engine.fixAll([tipIssue], in: NSRange(location: 0, length: 5), of: "maybe") == nil)
+    check("a tip has its own lesson, for Your patterns", Lessons.lesson(for: tipIssue)?.id == "tip-softeners")
+    check("deep check is told about switched-on tips", DeepPrompt.build({ var s = HouseStyle(); s.tips = ["filler"]; return s }(), mode: .fixOnly).contains("filler words"))
+    print(failed == 0 ? "tip checks: all pass" : "tip checks: \(failed) failed")
+    if failed > 0 { exit(1) }
+}
+
+/// Clean up this paragraph (`--cleanup`): Tests/cleanup.tsv holds dictated sentences with the text they should
+/// become, and finished sentences that must come out unchanged. `--no-model` skips Apple's model (false starts).
+@MainActor
+func cleanupChecks() async {
+    var model = !CommandLine.arguments.contains("--no-model")
+    if #available(macOS 26, *) { model = model && AppleModel.isAvailable } else { model = false }
+    print("Apple model used for false starts:", model)
+    // `--cleanup a.tsv b.tsv`: finished paragraphs from other sets, none of which should change.
+    let others = CommandLine.arguments.filter { $0.hasSuffix(".tsv") }
+    if !others.isEmpty {
+        var n = 0, changed = 0
+        for file in others {
+            for line in ((try? String(contentsOfFile: file, encoding: .utf8)) ?? "").split(separator: "\n") {
+                let f = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+                guard f.count > 1, f.count < 3 || f[2].isEmpty else { continue }
+                n += 1
+                let found = await Cleanup.changes(f[1], model: model)
+                if !found.isEmpty {
+                    changed += 1
+                    print("  CHANGED", found.map { "[\($0.reason.rawValue): \"\($0.original)\"]" }.joined(separator: " "), "|", f[1].prefix(160))
+                }
+            }
+        }
+        print("clean up on finished paragraphs: \(changed)/\(n) changed")
+        return
+    }
+    let tsv = try! String(contentsOfFile: "Tests/cleanup.tsv", encoding: .utf8)
+    var right = 0, dictated = 0, changes = 0, cleanChanged = 0, clean = 0
+    for line in tsv.split(separator: "\n") {
+        let f = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+        guard f.count >= 2 else { continue }
+        let found = await Cleanup.changes(f[1], model: model)
+        let out = Cleanup.apply(found, to: f[1])
+        let cuts = found.filter { $0.reason != .capital }
+        if f[0] == "clean" {
+            clean += 1
+            if out != f[1] { cleanChanged += 1 }
+            print(out == f[1] ? "  same   " : "  CHANGED", f[1], out == f[1] ? "" : "-> \(out)")
+        } else {
+            dictated += 1; changes += cuts.count
+            if out == f[2] { right += 1 }
+            print(out == f[2] ? "  right  " : "  WRONG  ", f[1], "->", out, out == f[2] ? "" : "(wanted: \(f[2]))",
+                  cuts.map { "[\($0.reason.rawValue): \"\($0.original)\"]" }.joined(separator: " "))
+        }
+    }
+    print("clean up: \(right)/\(dictated) dictated sentences come out right, \(changes) words or phrases taken out")
+    print("clean up: \(cleanChanged)/\(clean) finished sentences changed")
+}
+
+if CommandLine.arguments.contains("--cleanup") { await cleanupChecks() }
+else if CommandLine.arguments.contains("--tips-check") { await tipChecks() }
+else if CommandLine.arguments.contains("--tips") { await tipNoise() }
+else if CommandLine.arguments.contains("--context") { await contextChecks() }
 else if CommandLine.arguments.contains("--safety") { safetyChecks() }
 else if CommandLine.arguments.contains("--card") { cardChecks() }
 else if CommandLine.arguments.contains("--email") { emailChecks() }

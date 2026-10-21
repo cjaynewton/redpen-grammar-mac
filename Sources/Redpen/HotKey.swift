@@ -2,7 +2,7 @@ import AppKit
 import Carbon.HIToolbox
 
 /// System-wide shortcuts that work whichever app is in front: Control-Option-R opens the fix card at the cursor,
-/// Control-Option-Shift-R fixes every sure mistake in the paragraph. Carbon's hot keys need no extra permission
+/// Control-Option-Shift-R fixes every sure mistake in the paragraph, Control-Option-C cleans up a dictated paragraph. Carbon's hot keys need no extra permission
 /// and never see other keystrokes.
 @MainActor
 final class HotKey {

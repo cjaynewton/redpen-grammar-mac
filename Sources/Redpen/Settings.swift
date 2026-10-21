@@ -36,15 +36,29 @@ final class SettingsModel: ObservableObject {
         }
     }
 
-    /// One starter set's switch.
-    func starter(_ id: String) -> Binding<Bool> {
-        Binding(get: { self.config.houseStyle.starterSets.contains(id) },
+    /// One style tip's switch.
+    func tip(_ id: String) -> Binding<Bool> {
+        Binding(get: { self.config.houseStyle.tips.contains(id) },
                 set: { on in
-                    var s = self.config.houseStyle.starterSets.filter { $0 != id }
+                    var s = self.config.houseStyle.tips.filter { $0 != id }
                     if on { s.append(id) }
-                    self.config.houseStyle.starterSets = s
+                    self.config.houseStyle.tips = s
                 })
     }
+
+    /// A whole group's switch: on when every tip in it is on; switching it sets them all.
+    func group(_ g: StyleTip.Group) -> Binding<Bool> {
+        let ids = g.tips.map(\.id)
+        return Binding(get: { ids.allSatisfy(self.config.houseStyle.tips.contains) },
+                       set: { on in
+                           var s = self.config.houseStyle.tips.filter { !ids.contains($0) }
+                           if on { s += ids }
+                           self.config.houseStyle.tips = s
+                       })
+    }
+
+    /// How many tips are on, for the Settings row.
+    var tipsOn: Int { StyleTip.all.filter { config.houseStyle.tips.contains($0.id) }.count }
 
     /// Who runs Deep check. Fable is Claude only, so another helper falls back to Best.
     var deepWith: Binding<String> {
@@ -196,7 +210,6 @@ private struct Scrolling<Content: View>: View {
 struct SettingsPage: View {
     @ObservedObject var model: SettingsModel
     @ObservedObject var panel: PanelModel
-    @State private var open: Set<String> = []
 
     var body: some View {
         Scrolling(full: panel.rendering) {
@@ -223,7 +236,9 @@ struct SettingsPage: View {
                 SectionLabel(text: "How mistakes show up")
                 Group {
                     Row(label: "Underline",
-                        sub: model.config.calm ? "Spelling and grammar only, in red" : "Spelling and grammar in red, style tips in purple") {
+                        sub: model.config.calm ? (model.tipsOn > 0 ? "Spelling and grammar in red, and the style tips you switched on"
+                                                         : "Spelling and grammar only, in red")
+                                             : "Spelling and grammar in red, style tips in purple") {
                         Picker("Underline", selection: $model.config.calm) {
                             Text("Mistakes only").tag(true)
                             Text("Mistakes and tips").tag(false)
@@ -244,7 +259,8 @@ struct SettingsPage: View {
                            options: [("Any", ""), ("Canadian", "en_CA"), ("American", "en_US"), ("British", "en_GB")],
                            value: $model.config.houseStyle.spelling)
                     Divider()
-                    ForEach(StarterSet.all, id: \.id) { set in starter(set) }
+                    NextRow(label: "Style tips", sub: "Fillers, weasel words, passive voice and more",
+                            value: model.tipsOn == 0 ? "Off" : "\(model.tipsOn) on") { panel.go(.styleTips) }
                 }
                 Group {
                     NextRow(label: "Advanced", sub: "Your own words and Deep check") { panel.go(.advanced) }
@@ -258,35 +274,6 @@ struct SettingsPage: View {
         .onAppear { model.checkEngine() }
     }
 
-    private func starter(_ set: StarterSet) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(set.name)
-                    HStack(spacing: 4) {
-                        Text(Self.short[set.id] ?? set.blurb).foregroundStyle(.secondary)
-                        Button(open.contains(set.id) ? "Hide the words" : "See the words") {
-                            if open.contains(set.id) { open.remove(set.id) } else { open.insert(set.id) }
-                        }
-                        .buttonStyle(.link)
-                    }
-                    .font(.system(size: 12.5))
-                }
-                Spacer(minLength: 8)
-                Toggle(set.name, isOn: model.starter(set.id)).toggleStyle(.switch).labelsHidden().tint(.green)
-            }
-            if open.contains(set.id) {
-                Text(set.wordList).font(Fonts.serif(14)).foregroundStyle(.secondary)
-                    .padding(.horizontal, 10).padding(.vertical, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.primary.opacity(0.1)))
-            }
-        }
-    }
-
-    /// Shorter lines for the narrow panel.
-    private static let short = ["plain": "Shorter words.", "ai": "Machine-writing words.", "hedging": "Softeners."]
-
     static func spellingNote(_ s: String) -> String {
         switch s {
         case "en_CA": "Suggests colour, centre"
@@ -294,6 +281,140 @@ struct SettingsPage: View {
         case "en_GB": "Suggests colour, organise"
         default: "Accepts any English spelling"
         }
+    }
+}
+
+// MARK: - Style tips
+
+/// The purple of style-tip underlines, for the examples on this page.
+private let tipPurple = Color(nsColor: IssueKind.voice.color)
+
+/// Optional purple underlines in three groups, each with a switch for the whole group and one per tip. The "i"
+/// beside a tip opens its examples right under it, so a tip can be seen before it is switched on.
+struct StyleTipsPage: View {
+    @ObservedObject var model: SettingsModel
+    @ObservedObject var panel: PanelModel
+
+    var body: some View {
+        Scrolling(full: panel.rendering) {
+            VStack(alignment: .leading, spacing: 14) {
+                NavHead(back: "Settings", title: "Style tips") { panel.go(.settings) }
+                Text("Purple underlines for writing that is correct but could be stronger. Tap i to see examples.")
+                    .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 4)
+                ForEach(StyleTip.Group.allCases, id: \.self) { g in
+                    SectionLabel(text: g.name)
+                    Group {
+                        Row(label: g.motto) {
+                            Toggle(g.motto, isOn: model.group(g)).toggleStyle(.switch).labelsHidden().tint(.green)
+                        }
+                        .fontWeight(.semibold)
+                        ForEach(g.tips, id: \.id) { tip in
+                            Divider()
+                            tipRow(tip)
+                        }
+                    }
+                }
+                Text("Your own words to flag stay in Advanced.").foregroundStyle(.tertiary)
+                    .font(.system(size: 13)).padding(.horizontal, 4)
+            }
+            .padding(16)
+        }
+        .frame(width: 400)
+    }
+
+    private func tipRow(_ tip: StyleTip) -> some View {
+        let open = panel.openTip == tip.id
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(tip.name)
+                    Self.samples(tip).font(.system(size: 12.5)).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Button { withAnimation(.easeOut(duration: 0.15)) { panel.openTip = open ? nil : tip.id } } label: {
+                    InfoMark(on: open)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(open ? "Hide examples for \(tip.name)" : "Show examples for \(tip.name)")
+                Toggle(tip.name, isOn: model.tip(tip.id)).toggleStyle(.switch).labelsHidden().tint(.green)
+            }
+            if open, let ex = TipExamples.of(tip.id) { ExamplesView(examples: ex) }
+        }
+    }
+
+    /// The tip's sample words in purple, so nobody has to know what "a hedge" is.
+    static func samples(_ tip: StyleTip) -> Text {
+        var t = Text("")
+        for (i, w) in tip.samples.enumerated() {
+            if i > 0 { t = t + Text(", ").foregroundColor(.secondary) }
+            t = t + Text(TipExamples.curly(w)).foregroundColor(tipPurple)
+        }
+        if let b = tip.becomes { t = t + Text(" \u{2192} \(TipExamples.curly(b))").foregroundColor(.secondary) }
+        return t
+    }
+}
+
+/// The small circled "i" that opens a tip's examples.
+struct InfoMark: View {
+    var on: Bool
+    var size: CGFloat = 20
+    var body: some View {
+        Text("i").font(.system(size: size * 0.6, weight: .semibold, design: .serif)).italic()
+            .foregroundStyle(on ? Color.white : Color.secondary)
+            .frame(width: size, height: size)
+            .background(Circle().fill(on ? tipPurple : Color.clear))
+            .overlay(Circle().stroke(on ? tipPurple : Color.secondary.opacity(0.7), lineWidth: 1.5))
+            .contentShape(Circle())
+    }
+}
+
+/// A tip's examples: why it matters, three or four before-and-after pairs, and when to leave the words alone.
+struct ExamplesView: View {
+    let examples: TipExamples
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(TipExamples.curly(examples.why)).font(.system(size: 13)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(Array(examples.pairs.enumerated()), id: \.offset) { _, pair in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(Self.before(pair)).fixedSize(horizontal: false, vertical: true)
+                    Text("becomes").font(.system(size: 11)).foregroundStyle(.tertiary)
+                    Text(Self.after(pair)).fixedSize(horizontal: false, vertical: true)
+                }
+                .font(Fonts.serif(15))
+                .padding(.top, 8)
+                .overlay(alignment: .top) { Rectangle().fill(Color.primary.opacity(0.09)).frame(height: 1) }
+            }
+            Text(TipExamples.curly(examples.leaveWhen)).font(.system(size: 12.5)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 4))
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.primary.opacity(0.09)))
+    }
+
+    static func before(_ p: TipExamples.Pair) -> AttributedString {
+        var out = AttributedString()
+        for (t, marked) in p.beforeRuns {
+            var a = AttributedString(t)
+            a.foregroundColor = .secondary
+            if marked { a.strikethroughStyle = .init(pattern: .solid, color: tipPurple) }
+            out += a
+        }
+        return out
+    }
+
+    static func after(_ p: TipExamples.Pair) -> AttributedString {
+        var out = AttributedString()
+        for (t, marked) in p.afterRuns {
+            var a = AttributedString(t)
+            if marked { a.foregroundColor = tipPurple; a.backgroundColor = tipPurple.opacity(0.1) }
+            out += a
+        }
+        return out
     }
 }
 

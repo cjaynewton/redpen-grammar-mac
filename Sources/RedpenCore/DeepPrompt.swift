@@ -36,11 +36,20 @@ public enum DeepPrompt {
         if !style.containerWords.isEmpty { rules.append("avoid vague words like " + style.containerWords.prefix(6).joined(separator: ", ")) }
         if !style.disclaimers.isEmpty { rules.append("cut defensive disclaimers") }
         if style.flagOtherLanguages { rules.append("the result must be in English") }
-        for set in StarterSet.all where style.starterSets.contains(set.id) {
-            switch set.id {
+        for tip in StyleTip.all where style.tips.contains(tip.id) {
+            switch tip.id {
             case "plain": rules.append("prefer the short plain word (use, not utilize; to, not in order to)")
             case "ai": rules.append("avoid words readers link with machine writing, such as delve, tapestry, seamless")
-            case "hedging": rules.append("cut softeners such as I think, sort of, basically")
+            case "softeners": rules.append("cut softeners such as I think, sort of, maybe")
+            case "filler": rules.append("cut filler words such as basically, actually, you know")
+            case "unsourced": rules.append("no claims with an unnamed source, such as studies show or experts say")
+            case "twice": rules.append("cut words that repeat each other, such as free gift or past history")
+            case "passive": rules.append("name who did it rather than hiding the doer in the passive voice")
+            case "nominal": rules.append("use the verb, not a noun made from it (decide, not make a decision)")
+            case "slowstart": rules.append("start with the point, not a warm-up such as I just wanted to reach out")
+            case "apology": rules.append("no apologies for asking, such as sorry to bother you")
+            case "cliche": rules.append("no business cliches such as circle back or low-hanging fruit")
+            case "promises": rules.append("no promises that cannot be kept, such as guaranteed or never fails")
             default: break
             }
         }

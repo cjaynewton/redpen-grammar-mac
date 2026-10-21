@@ -58,6 +58,13 @@ final class SuggestionPanel: NSObject {
         /// Whether Return, Esc and Tab may go to the card. Off for the Terminal card, which opens while you type,
         /// so Return still runs your command.
         var takesKeys = true
+        /// A style tip's "Stop these tips", which switches that tip off.
+        var stop: Choice? = nil
+        /// A style tip's examples, behind "More examples".
+        var examples: TipExamples? = nil
+        /// Clean up this paragraph: the paragraph and each change in it (range in the paragraph, what replaces it).
+        /// Drawn the same way in every style: the paragraph with the cuts struck, then how it will read.
+        var cleanup: (text: String, changes: [(range: NSRange, replacement: String)])? = nil
     }
 
     /// "roomy", "sentence" or "keyboard", from the settings.
@@ -65,6 +72,7 @@ final class SuggestionPanel: NSObject {
     private var current: Card?
     private var shownAt: (anchor: CGRect, avoid: [CGRect])?
     private var whyOpen = false
+    private var examplesOpen = false
     /// Bumped whenever the card is shown, replaced or hidden, so a key caught for one card never acts on another.
     private var gen = 0
     private var appObserver: Any?
@@ -102,6 +110,7 @@ final class SuggestionPanel: NSObject {
     /// `anchor` is the underline's rect; `avoid` holds the other underlines, which the card tries not to cover.
     func show(_ card: Card, below anchor: CGRect, avoid: [CGRect] = []) {
         whyOpen = false
+        examplesOpen = false
         present(card, anchor, avoid)
     }
 
@@ -142,8 +151,8 @@ final class SuggestionPanel: NSObject {
     }
 
     /// Draws a card into a PNG without showing it, for checking type and layout from the command line.
-    static func render(_ card: Card, appearance: String, style: String = "roomy", to path: String) {
-        guard let rep = bitmap(card, appearance: appearance, style: style) else { return }
+    static func render(_ card: Card, appearance: String, style: String = "roomy", examples: Bool = false, to path: String) {
+        guard let rep = bitmap(card, appearance: appearance, style: style, examples: examples) else { return }
         try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
     }
 
@@ -155,10 +164,11 @@ final class SuggestionPanel: NSObject {
         return img
     }
 
-    private static func bitmap(_ card: Card, appearance: String, style: String) -> NSBitmapImageRep? {
+    private static func bitmap(_ card: Card, appearance: String, style: String, examples: Bool = false) -> NSBitmapImageRep? {
         let p = SuggestionPanel()
         p.appearance = appearance
         p.style = style
+        p.examplesOpen = examples
         let (box, size) = p.build(card)
         box.frame = NSRect(origin: .zero, size: size)
         box.appearance = NSAppearance(named: p.dark ? .darkAqua : .aqua)
@@ -209,6 +219,7 @@ final class SuggestionPanel: NSObject {
         outer.spacing = 0
         outer.translatesAutoresizingMaskIntoConstraints = false
         switch style {
+        case _ where card.cleanup != nil: cleanupCard(card, p, outer)
         case "sentence": sentenceCard(card, p, outer)
         case "keyboard": keyboardCard(card, p, outer)
         default: roomyCard(card, p, outer)
@@ -237,6 +248,7 @@ final class SuggestionPanel: NSObject {
         if let msg = card.message { s.addArrangedSubview(wrapping(serifText(msg, 19, p.ink))) }
         var buttons = buttonsFor(card, p, height: 40, size: 15, primaryTitle: nil, altPrefix: "")
         if let ig = card.ignore { buttons.append(button(ig, filled: false, p, height: 40, size: 15)) }
+        if let st = card.stop { buttons.append(button(st, filled: false, p, height: 40, size: 15)) }
         if !buttons.isEmpty { s.addArrangedSubview(flow(buttons, spacing: 8)) }
         if let lesson = lessonText(card, p, size: 17, countSize: 13) {
             s.addArrangedSubview(rule(p))
@@ -246,7 +258,9 @@ final class SuggestionPanel: NSObject {
         var links: [NSView] = []
         if let f = card.fixAll { links.append(link(Choice(title: "Fix all \(f.count) sure mistakes in this paragraph", run: f.choice.run), p, size: 14)) }
         links += card.footer.map { link($0, p, size: 14) }
+        if let more = moreLink(card, p, size: 14) { links.append(more) }
         if !links.isEmpty { s.addArrangedSubview(flow(links, spacing: 20)) }
+        addExamples(card, p, to: s)
         outer.addArrangedSubview(s)
     }
 
@@ -298,10 +312,13 @@ final class SuggestionPanel: NSObject {
         }
         var buttons = buttonsFor(card, p, height: 40, size: 15, primaryTitle: card.marks.count == 1 ? "Accept" : nil, altPrefix: "Use ")
         if let ig = card.ignore { buttons.append(button(Choice(title: "Dismiss", run: ig.run), filled: false, p, height: 40, size: 15)) }
+        if let st = card.stop { buttons.append(button(st, filled: false, p, height: 40, size: 15)) }
         if !buttons.isEmpty { s.setCustomSpacing(16, after: s.arrangedSubviews.last!); s.addArrangedSubview(flow(buttons, spacing: 8)) }
+        addExamples(card, p, to: s)
         outer.addArrangedSubview(s)
 
         var left: [NSView] = card.footer.map { link($0, p, size: 13.5) }
+        if let more = moreLink(card, p, size: 13.5) { left.append(more) }
         if left.isEmpty, let f = card.fixAll {
             left = [NSTextField(labelWithAttributedString: NSAttributedString(string: "\(f.count) sure mistakes in this paragraph", attributes: [
                 .font: NSFont.systemFont(ofSize: 13.5), .foregroundColor: p.mid]))]
@@ -338,10 +355,13 @@ final class SuggestionPanel: NSObject {
         if let pc = card.primary { buttons.append(button(Choice(title: card.marks.count == 1 ? "Accept" : pc.title, run: pc.run), filled: true, p, height: 40, size: 15, hint: card.takesKeys ? "Return" : nil)) }
         if let ig = card.ignore { buttons.append(button(Choice(title: "Skip", run: ig.run), filled: false, p, height: 40, size: 15, hint: card.takesKeys ? "Esc" : nil)) }
         if let f = card.fixAll { buttons.append(button(Choice(title: "Fix all \(f.count)", run: f.choice.run), filled: false, p, height: 40, size: 15, hint: card.takesKeys ? "\u{2303}\u{2325}\u{21E7}R" : nil)) }
+        if let st = card.stop { buttons.append(button(st, filled: false, p, height: 40, size: 15)) }
         if !buttons.isEmpty { s.setCustomSpacing(16, after: s.arrangedSubviews.last!); s.addArrangedSubview(flow(buttons, spacing: 8)) }
+        addExamples(card, p, to: s)
         outer.addArrangedSubview(s)
 
         var left: [NSView] = []
+        if let more = moreLink(card, p, size: 13.5) { left.append(more) }
         if card.takesKeys, card.onStep != nil, (card.position?.1 ?? 0) > 1 {
             left.append(NSTextField(labelWithAttributedString: NSAttributedString(string: "Tab for the next mistake", attributes: [
                 .font: NSFont.systemFont(ofSize: 13.5), .foregroundColor: p.mid])))
@@ -351,6 +371,87 @@ final class SuggestionPanel: NSObject {
             string: "Fixed \(card.count) times this month", attributes: [.font: NSFont.systemFont(ofSize: 13.5, weight: .medium), .foregroundColor: card.color])) : nil
         if !left.isEmpty || right != nil { outer.addArrangedSubview(strip(left, right, p, top: 16, ruled: false)) }
         else { outer.addArrangedSubview(spacer(18)) }
+    }
+
+    // MARK: - Clean up
+
+    /// Every change before it goes in: the paragraph with what comes out struck on a soft purple ground, then the
+    /// paragraph as it will read. Accept all puts them all in; Cancel leaves the text alone.
+    private func cleanupCard(_ card: Card, _ p: Palette, _ outer: NSStackView) {
+        guard let c = card.cleanup else { return }
+        let s = section(top: 18, bottom: 18, spacing: 12)
+        s.addArrangedSubview(kindLabel(card))
+        let ns = c.text as NSString
+        let base: [NSAttributedString.Key: Any] = [.font: Self.serif(17), .foregroundColor: p.ink]
+        let marked = NSMutableAttributedString()
+        var at = 0
+        for ch in c.changes.sorted(by: { $0.range.location < $1.range.location }) where NSMaxRange(ch.range) <= ns.length && ch.range.location >= at {
+            marked.append(NSAttributedString(string: ns.substring(with: NSRange(location: at, length: ch.range.location - at)), attributes: base))
+            if ch.replacement.isEmpty {
+                marked.append(NSAttributedString(string: ns.substring(with: ch.range), attributes: [
+                    .font: Self.serif(17), .foregroundColor: p.mid, .backgroundColor: card.color.withAlphaComponent(0.13),
+                    .strikethroughStyle: NSUnderlineStyle.single.rawValue, .strikethroughColor: card.color]))
+            } else {
+                // A capital the new sentence start needs: the letter as it will read, in purple.
+                marked.append(NSAttributedString(string: ch.replacement, attributes: [.font: Self.serif(17, weight: .medium), .foregroundColor: card.color]))
+            }
+            at = NSMaxRange(ch.range)
+        }
+        marked.append(NSAttributedString(string: ns.substring(from: min(at, ns.length)), attributes: base))
+        marked.addAttribute(.paragraphStyle, value: lines(1.3), range: NSRange(location: 0, length: marked.length))
+        s.addArrangedSubview(wrapping(marked))
+        s.addArrangedSubview(rule(p))
+        var result = c.text as NSString
+        for ch in c.changes.sorted(by: { $0.range.location > $1.range.location }) where NSMaxRange(ch.range) <= result.length {
+            result = result.replacingCharacters(in: ch.range, with: ch.replacement) as NSString
+        }
+        s.addArrangedSubview(wrapping(NSAttributedString(string: result as String, attributes: [
+            .font: Self.serif(17), .foregroundColor: p.ink, .paragraphStyle: lines(1.3)])))
+        var buttons: [NSView] = []
+        if let pc = card.primary { buttons.append(button(pc, filled: true, p, height: 38, size: 15, hint: style == "keyboard" && card.takesKeys ? "Return" : nil)) }
+        if let ig = card.ignore { buttons.append(button(ig, filled: false, p, height: 38, size: 15, hint: style == "keyboard" && card.takesKeys ? "Esc" : nil)) }
+        s.setCustomSpacing(16, after: s.arrangedSubviews.last!)
+        s.addArrangedSubview(flow(buttons, spacing: 8))
+        outer.addArrangedSubview(s)
+    }
+
+    // MARK: - Style tip examples
+
+    /// "More examples" opens the tip's examples in place; once open it reads "Fewer examples".
+    private func moreLink(_ card: Card, _ p: Palette, size: CGFloat) -> NSView? {
+        guard card.examples != nil else { return nil }
+        let c = Choice(title: examplesOpen ? "Fewer examples" : "More examples") { [weak self] in
+            guard let self, let cur = self.current, let at = self.shownAt else { return }
+            self.examplesOpen.toggle()
+            self.present(cur, at.anchor, at.avoid)
+        }
+        return link(c, p, size: size, keepOpen: true)
+    }
+
+    /// The tip's before-and-after pairs and its "Leave it when" line, under a thin rule.
+    private func addExamples(_ card: Card, _ p: Palette, to s: NSStackView) {
+        guard examplesOpen, let ex = card.examples else { return }
+        s.addArrangedSubview(rule(p))
+        s.addArrangedSubview(wrapping(NSAttributedString(string: TipExamples.curly(ex.why), attributes: [
+            .font: NSFont.systemFont(ofSize: 13.5), .foregroundColor: p.mid, .paragraphStyle: lines(1.3)])))
+        for pair in ex.pairs {
+            let t = NSMutableAttributedString()
+            for (run, marked) in pair.beforeRuns {
+                var a: [NSAttributedString.Key: Any] = [.font: Self.serif(15.5), .foregroundColor: p.mid]
+                if marked { a[.strikethroughStyle] = NSUnderlineStyle.thick.rawValue; a[.strikethroughColor] = card.color }
+                t.append(NSAttributedString(string: run, attributes: a))
+            }
+            t.append(NSAttributedString(string: "\nbecomes\n", attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: p.mid]))
+            for (run, marked) in pair.afterRuns {
+                var a: [NSAttributedString.Key: Any] = [.font: Self.serif(15.5), .foregroundColor: p.ink]
+                if marked { a[.foregroundColor] = card.color; a[.backgroundColor] = card.color.withAlphaComponent(0.12) }
+                t.append(NSAttributedString(string: run, attributes: a))
+            }
+            t.addAttribute(.paragraphStyle, value: lines(1.25), range: NSRange(location: 0, length: t.length))
+            s.addArrangedSubview(wrapping(t))
+        }
+        s.addArrangedSubview(wrapping(NSAttributedString(string: TipExamples.curly(ex.leaveWhen), attributes: [
+            .font: NSFont.systemFont(ofSize: 13), .foregroundColor: p.mid, .paragraphStyle: lines(1.3)])))
     }
 
     // MARK: - Pieces

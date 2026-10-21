@@ -9,6 +9,7 @@ protocol PanelHost: AnyObject {
     func statusLine() -> (text: String, live: Bool)
     func fixAtCursor()
     func fixAllAtCursor()
+    func cleanUpAtCursor()
     func deepCheck()
     var canDeepCheck: Bool { get }
     func allowAccessibility()
@@ -29,10 +30,12 @@ final class PanelModel: ObservableObject {
     weak var host: PanelHost?
     @Published var enabled = true { didSet { guard enabled != oldValue else { return }; host?.config.enabled = enabled; host?.config.save() } }
     /// Which page the panel shows. Settings slides in place of the menu instead of opening a window.
-    enum Page { case main, settings, fixBox, advanced, about }
+    enum Page { case main, settings, fixBox, advanced, styleTips, about }
     @Published private(set) var page = Page.main { didSet { if page != oldValue { DispatchQueue.main.async { self.onLayoutChange?() } } } }
     /// The settings being edited, made fresh each time Settings opens so it starts from the saved file.
     @Published private(set) var settings: SettingsModel?
+    /// The style tip whose examples are open on the Style tips page.
+    @Published var openTip: String? { didSet { if openTip != oldValue, !rendering { DispatchQueue.main.async { self.onLayoutChange?() } } } }
     /// Set while drawing pages to PNG files: long pages draw in full instead of scrolling.
     var rendering = false
     var onLookChange: ((String) -> Void)?
@@ -117,7 +120,7 @@ final class PanelModel: ObservableObject {
         switch page {
         case .main: return false
         case .settings, .about: go(.main)
-        case .fixBox, .advanced: go(.settings)
+        case .fixBox, .advanced, .styleTips: go(.settings)
         }
         return true
     }
@@ -219,6 +222,7 @@ struct PanelView: View {
             case .settings: model.settings.map { SettingsPage(model: $0, panel: model).transition(.push(from: model.direction)) }
             case .fixBox: model.settings.map { FixBoxPage(model: $0, panel: model).transition(.push(from: model.direction)) }
             case .advanced: model.settings.map { AdvancedPage(model: $0, panel: model).transition(.push(from: model.direction)) }
+            case .styleTips: model.settings.map { StyleTipsPage(model: $0, panel: model).transition(.push(from: model.direction)) }
             case .about: AboutPage(panel: model).transition(.push(from: model.direction))
             }
         }
@@ -230,6 +234,7 @@ struct PanelView: View {
 
     private var menu: some View {
         VStack(alignment: .leading, spacing: 14) {
+            if let v = updates.waiting { updateBanner(v) }
             header
             if !model.trusted { permission }
             group { actions }
@@ -263,6 +268,24 @@ struct PanelView: View {
         .padding(.horizontal, 4)
     }
 
+    /// A waiting update across the top of the menu, so it is the first thing seen when the menu opens.
+    private func updateBanner(_ version: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "arrow.down.circle.fill").font(.system(size: 18)).foregroundStyle(Color.accentColor)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Redpen \(version) is ready").fontWeight(.semibold)
+                Text("Installs in a few seconds, then Redpen restarts").font(.system(size: 12.5)).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            Button("Install") { model.leave(); updates.checkNow() }
+                .buttonStyle(.borderedProminent).tint(.accentColor).controlSize(.regular)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.accentColor.opacity(0.35)))
+    }
+
     private var permission: some View {
         group {
             Text("Redpen needs Accessibility permission to read what you type.").fixedSize(horizontal: false, vertical: true)
@@ -274,6 +297,7 @@ struct PanelView: View {
         VStack(alignment: .leading, spacing: 12) {
             row("Fix mistake at cursor", key: "\u{2303}\u{2325}R") { close(); model.host?.fixAtCursor() }
             row("Fix all in this paragraph", key: "\u{2303}\u{2325}\u{21E7}R") { close(); model.host?.fixAllAtCursor() }
+            row("Clean up this paragraph", key: "\u{2303}\u{2325}C") { close(); model.host?.cleanUpAtCursor() }
             row("Deep check with \(model.deepName)", key: nil) { close(); model.host?.deepCheck() }
                 .disabled(!model.canDeepCheck)
         }
@@ -529,18 +553,22 @@ final class MenuPanel: NSObject, NSWindowDelegate {
     static func render(host: PanelHost, to prefix: String, pages: [PanelModel.Page] = [.main]) {
         // Give the grammar engine row its real answer rather than "Checking…".
         GrammarEngine.shared.startIfInstalled()
+        if let v = ProcessInfo.processInfo.environment["REDPEN_FAKE_UPDATE"], !v.isEmpty { Updates.shared.pretendWaiting(v) }
         let until = Date().addingTimeInterval(5)
         while GrammarEngine.shared.state == .checking, Date() < until { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) }
         for page in pages { render(host: host, to: page == .main ? prefix : "\(prefix)-\(page)", page: page) }
+        // The Style tips page again with one tip's examples open.
+        if pages.contains(.styleTips) { render(host: host, to: "\(prefix)-styleTips-open", page: .styleTips, openTip: "unsourced") }
     }
 
-    private static func render(host: PanelHost, to prefix: String, page: PanelModel.Page) {
+    private static func render(host: PanelHost, to prefix: String, page: PanelModel.Page, openTip: String? = nil) {
         let model = PanelModel()
         model.host = host
         model.rendering = true
+        model.openTip = openTip
         model.refresh()
         if page == .about { model.go(.about) } else if page != .main { model.go(.settings) }
-        if page == .fixBox || page == .advanced { model.go(page) }
+        if page == .fixBox || page == .advanced || page == .styleTips { model.go(page) }
         model.set("claude", Helpers.claude(path: host.config.claudeExecutable))
         model.set("chatgpt", Helpers.codex())
         model.set("gemini", Helpers.gemini())
