@@ -62,10 +62,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
             flag.title = "One of your rules"
             let fs = "We can leverage the new carrier."
             flag.sentence = (fs, (fs as NSString).range(of: "leverage"), nil)
-            for (name, c) in [("main", card), ("long", long), ("cut", cut), ("term", term), ("flag", flag)] {
+            // A style tip: its group in the label, Stop these tips, and its examples closed and open.
+            let ts = "Studies show that customers prefer quotes sent the same day."
+            let tipIssue = StyleTip.find("unsourced")!
+            var tip = SuggestionPanel.Card(kind: "Style tip \u{00B7} Clear", color: IssueKind.voice.color,
+                                           marks: [("Studies show that customers", "Customers")], message: tipIssue.message, why: nil, example: nil)
+            tip.primary = .init(title: "Use \u{201C}Customers\u{201D}") {}
+            tip.ignore = .init(title: "Ignore") {}
+            tip.stop = .init(title: "Stop these tips") {}
+            tip.examples = TipExamples.of("unsourced")
+            tip.title = tipIssue.name
+            tip.sentence = (ts, (ts as NSString).range(of: "Studies show that customers"), "Customers")
+            for (name, c) in [("main", card), ("long", long), ("cut", cut), ("term", term), ("flag", flag), ("tip", tip)] {
                 for style in ["roomy", "sentence", "keyboard"] {
                     for look in ["light", "dark"] {
                         SuggestionPanel.render(c, appearance: look, style: style, to: "\(CommandLine.arguments[i + 1])-\(name)-\(style)-\(look).png")
+                        if name == "tip" {
+                            SuggestionPanel.render(c, appearance: look, style: style, examples: true,
+                                                   to: "\(CommandLine.arguments[i + 1])-tipopen-\(style)-\(look).png")
+                        }
                     }
                 }
             }

@@ -251,7 +251,9 @@ final class Watcher {
         let ns = text as NSString
         let pr = ns.paragraphRange(for: window(el, text))
         let slice = ns.substring(with: pr)
-        return ("\(pr.location)|\(slice)", slice, pr)
+        // The rules a switched-on tip adds are part of the key, so switching the tip re-checks the text.
+        let extra = StyleTip.languageToolRules(config.houseStyle.tips).joined(separator: ",")
+        return ("\(pr.location)|\(extra)|\(slice)", slice, pr)
     }
 
     private func runLanguageTool(_ el: AXUIElement, _ text: String) {
@@ -261,7 +263,8 @@ final class Watcher {
         Task { @MainActor in
             defer { self.ltInFlight = false }
             // No answer (engine starting, timed out, or not LanguageTool): try this text again in a few seconds.
-            guard let found = await LanguageTool.checkIfReady(slice) else { self.ltFailedAt = Date(); return }
+            let enabling = StyleTip.languageToolRules(self.config.houseStyle.tips)
+            guard let found = await LanguageTool.checkIfReady(slice, enabling: enabling) else { self.ltFailedAt = Date(); return }
             self.ltIssues = found.map { var i = $0; i.range = i.range.shifted(by: pr.location); return i }
             self.ltKey = key
         }
@@ -487,6 +490,12 @@ final class Watcher {
         }
         card.fixAll = fixAll
         card.title = Self.cardTitle(issue)
+        if let id = issue.tip, let tip = StyleTip.find(id) {
+            card.kind = "Style tip \u{00B7} \(tip.group.name)"
+            card.examples = TipExamples.of(id)
+            // One click turns this tip off, so a tip that annoys never costs more than that.
+            card.stop = .init(title: "Stop these tips") { [weak self] in self?.stopTip(id) }
+        }
         if let (s, at) = Spelling.sentence(around: issue.range, in: lastText), (s as NSString).length <= 280 {
             // Trailing spaces and line breaks only; the mistake's offset counts from the sentence's start.
             var text = s
@@ -501,9 +510,18 @@ final class Watcher {
         panel.show(card, below: anchor, avoid: marks.filter { $0.issue != issue }.map(\.rect))
     }
 
+    /// Switches one style tip off from its fix box, saved like a change in Settings.
+    func stopTip(_ id: String) {
+        config.houseStyle.tips.removeAll { $0 == id }
+        config.save()
+        Log.note("style tip \(id) switched off from the fix box")
+        lastQuickAt = .distantPast
+    }
+
     /// What is wrong in a few words, the title on the Whole sentence card.
     static func cardTitle(_ issue: Issue) -> String {
         if issue.tentative { return "Maybe a mistake" }
+        if let id = issue.tip, let tip = StyleTip.find(id) { return tip.name }
         switch issue.kind {
         case .spelling: return issue.replacements.isEmpty ? "Unknown word" : "Misspelled word"
         case .grammar: return issue.replacements.first == "" ? "Extra word" : "Grammar fix"
