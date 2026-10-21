@@ -12,7 +12,7 @@ public enum Engine {
     /// the app once typing pauses.
     @MainActor
     public static func full(_ text: String, longform: Bool, style: HouseStyle = HouseStyle()) async -> [Issue] {
-        let lt = await LanguageTool.check(text)
+        let lt = await LanguageTool.check(text, enabling: StyleTip.languageToolRules(style.tips))
         // Redpen's own apostrophe fixes go before LanguageTool's on the same words: it offers "managers'" for
         // "our managers signature" and "vacancys" for "three vacancy's".
         var issues = merge(merge(spellingAgreed(Spelling.check(text), lt: lt), Apostrophes.issues(text)),
@@ -136,8 +136,9 @@ extension Engine {
     }
 
     /// Calm mode: underline only real spelling and grammar mistakes. Style rules and model maybes stay quiet.
+    /// A style tip stays: it only exists because the writer switched it on.
     public static func calm(_ issues: [Issue]) -> [Issue] {
-        issues.filter { $0.kind != .voice && !$0.tentative }
+        issues.filter { ($0.kind != .voice || $0.tip != nil) && !$0.tentative }
     }
 
     /// Every sure mistake inside `range` that still matches the text, none overlapping, in reading order, plus the

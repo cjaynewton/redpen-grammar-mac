@@ -25,7 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
             exit(0)
         }
         if let i = CommandLine.arguments.firstIndex(of: "--render-settings"), i + 1 < CommandLine.arguments.count {
-            MenuPanel.render(host: self, to: CommandLine.arguments[i + 1], pages: [.settings, .fixBox, .advanced, .about])
+            MenuPanel.render(host: self, to: CommandLine.arguments[i + 1], pages: [.settings, .fixBox, .advanced, .styleTips, .about])
             exit(0)
         }
         if let i = CommandLine.arguments.firstIndex(of: "--render-card"), i + 1 < CommandLine.arguments.count {

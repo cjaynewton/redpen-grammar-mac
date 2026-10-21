@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import Sparkle
 
 /// Updates through Sparkle. Once a day Redpen asks the release page for the latest version number; nothing you
@@ -26,7 +26,17 @@ final class Updates: NSObject, ObservableObject, SPUStandardUserDriverDelegate {
 
     var lastChecked: Date? { controller?.updater.lastUpdateCheckDate }
 
-    func checkNow() { controller?.checkForUpdates(nil) }
+    /// Redpen lives in the menu bar and is rarely the front app, so Sparkle's windows ("You're up to date", the
+    /// update itself) opened behind everything else and looked like nothing happened. Redpen comes forward first.
+    func checkNow() {
+        bringForward()
+        controller?.checkForUpdates(nil)
+    }
+
+    func bringForward() { NSApp.activate(ignoringOtherApps: true) }
+
+    /// For drawing the menu with an update waiting (`REDPEN_FAKE_UPDATE=0.9 Redpen --render-panel`).
+    func pretendWaiting(_ version: String) { waiting = version }
 
     // A menu-bar app is rarely in front, so a daily check that finds an update marks the menu instead.
     nonisolated var supportsGentleScheduledUpdateReminders: Bool { true }
@@ -37,7 +47,12 @@ final class Updates: NSObject, ObservableObject, SPUStandardUserDriverDelegate {
 
     nonisolated func standardUserDriverWillHandleShowingUpdate(_ handleShowingUpdate: Bool, forUpdate update: SUAppcastItem, state: SPUUserUpdateState) {
         let version = update.displayVersionString
-        MainActor.assumeIsolated { if !handleShowingUpdate { waiting = version } }
+        // Shown now (a check the writer asked for, or a scheduled one in immediate focus): its window comes forward.
+        MainActor.assumeIsolated { if handleShowingUpdate { bringForward() } else { waiting = version } }
+    }
+
+    nonisolated func standardUserDriverWillShowModalAlert() {
+        MainActor.assumeIsolated { bringForward() }
     }
 
     nonisolated func standardUserDriverDidReceiveUserAttention(forUpdate update: SUAppcastItem) {

@@ -14,6 +14,8 @@ public struct Issue: Sendable, Equatable {
     public var original: String
     /// From Apple's language model: shown as a softer "maybe" underline, since it can misread good sentences.
     public var tentative = false
+    /// The style tip that found this, by id ("filler", "passive"). Nil for everything else.
+    public var tip: String? = nil
 
     public init(range: NSRange, kind: IssueKind, message: String, replacements: [String], original: String) {
         self.range = range

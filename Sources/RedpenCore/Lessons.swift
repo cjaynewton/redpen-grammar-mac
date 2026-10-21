@@ -180,6 +180,7 @@ public enum Lessons {
 
         switch issue.kind {
         case .voice:
+            if let id = issue.tip, let tip = StyleTip.find(id) { return make("tip-\(id)", tip.name, tip.message, "") }
             if msg.contains("em dash") || msg.contains("dashes") { return dash }
             if msg.contains("colon") { return colon }
             if msg.contains("container word") { return container }

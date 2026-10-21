@@ -81,13 +81,14 @@ public enum LanguageTool {
 
 
     /// Ranges are relative to `text`. Returns [] if the server is not running.
-    public static func check(_ text: String, language: String = "en-CA") async -> [Issue] {
-        await checkIfReady(text, language: language) ?? []
+    /// `enabling`: rules that are off by default, such as PASSIVE_VOICE for the Hidden doer tip.
+    public static func check(_ text: String, language: String = "en-CA", enabling: [String] = []) async -> [Issue] {
+        await checkIfReady(text, language: language, enabling: enabling) ?? []
     }
 
     /// Like `check`, but nil when no answer came back (server down, not LanguageTool, or timed out), so the caller
     /// can try the same text again later instead of treating it as clean.
-    public static func checkIfReady(_ text: String, language: String = "en-CA") async -> [Issue]? {
+    public static func checkIfReady(_ text: String, language: String = "en-CA", enabling: [String] = []) async -> [Issue]? {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
         // Ask the port to prove it is LanguageTool before every check: the program behind it can change at any time.
         guard await isRunning(fresh: true) else { return nil }
@@ -102,6 +103,7 @@ public enum LanguageTool {
             .init(name: "disabledRules", value: disabledRules.joined(separator: ",")),
             .init(name: "disabledCategories", value: disabledCategories.joined(separator: ",")),
         ]
+        if !enabling.isEmpty { form.queryItems?.append(.init(name: "enabledRules", value: enabling.joined(separator: ","))) }
         req.httpBody = form.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B").data(using: .utf8)
         guard let (data, _) = try? await URLSession.shared.data(for: req) else { return nil }
         return parse(data, text: text)
@@ -116,6 +118,13 @@ public enum LanguageTool {
             let r = NSRange(location: m.offset, length: m.length)
             // "protege" and "protégé" are both correct English; accents are optional.
             if m.rule.id.hasPrefix("EN_DIACRITICS") { return nil }
+            // The Hidden doer tip, asked for only when it is switched on. A passive that names its doer is fine.
+            if m.rule.id == "PASSIVE_VOICE", let tip = StyleTip.find("passive") {
+                guard StyleTip.hidesDoer(r, in: ns) else { return nil }
+                var i = Issue(range: r, kind: .voice, message: tip.message, replacements: [], original: ns.substring(with: r))
+                i.tip = tip.id
+                return i
+            }
             // Only the dictionary rules are spelling. LanguageTool also tags confused words ("Your going") as
             // "misspelling", and those must survive the Mac-dictionary agreement check.
             let speller = m.rule.id.hasPrefix("MORFOLOGIK") || m.rule.id.contains("SPELLER") || m.rule.id.hasPrefix("HUNSPELL")

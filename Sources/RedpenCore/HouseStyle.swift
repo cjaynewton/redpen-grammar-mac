@@ -18,7 +18,8 @@ public struct HouseStyle: Codable, Sendable, Equatable {
     public var spelling = ""
     /// Extra instructions for Deep check, e.g. "Keep my short sentences."
     public var deepCheckNotes = ""
-    /// Starter word lists switched on by id: "plain", "ai", "hedging". See `StarterSet`.
+    /// Style tips switched on, by id ("plain", "ai", "filler" and so on). See `StyleTip`. The name is from 0.8,
+    /// when only three word lists existed, so older settings files keep what they had on.
     public var starterSets: [String] = []
 
     public init() {}
@@ -33,7 +34,7 @@ public struct HouseStyle: Codable, Sendable, Equatable {
         flagOtherLanguages = try c.decodeIfPresent(Bool.self, forKey: .flagOtherLanguages) ?? d.flagOtherLanguages
         spelling = try c.decodeIfPresent(String.self, forKey: .spelling) ?? d.spelling
         deepCheckNotes = try c.decodeIfPresent(String.self, forKey: .deepCheckNotes) ?? d.deepCheckNotes
-        starterSets = try c.decodeIfPresent([String].self, forKey: .starterSets) ?? d.starterSets
+        starterSets = StyleTip.migrate(try c.decodeIfPresent([String].self, forKey: .starterSets) ?? d.starterSets)
     }
 
     /// The example style that ships in examples/: every rule on.
