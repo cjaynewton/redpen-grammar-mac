@@ -47,7 +47,10 @@ struct AboutPage: View {
         VStack(alignment: .leading, spacing: 14) {
             NavHead(back: "Redpen", title: "About") { panel.go(.main) }
             VStack(spacing: 6) {
-                Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 72, height: 72)
+                // Until Redpen has its own icon, the generic app icon would look unfinished, so none shows.
+                if Bundle.main.object(forInfoDictionaryKey: "CFBundleIconFile") != nil {
+                    Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 72, height: 72)
+                }
                 Text("Redpen Grammar").font(Fonts.serif(24, .semibold, italic: true))
                 status.font(.system(size: 13))
             }
