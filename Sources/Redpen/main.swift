@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
     private var lastDeepText: String?
     private var hotKey: HotKey?
     private var fixAllKey: HotKey?
+    private var cleanUpKey: HotKey?
 
     func applicationDidFinishLaunching(_ n: Notification) {
         Fonts.register()
@@ -73,7 +74,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
             tip.examples = TipExamples.of("unsourced")
             tip.title = tipIssue.name
             tip.sentence = (ts, (ts as NSString).range(of: "Studies show that customers"), "Customers")
-            for (name, c) in [("main", card), ("long", long), ("cut", cut), ("term", term), ("flag", flag), ("tip", tip)] {
+            // Clean up this paragraph, from the mock-up's dictated paragraph.
+            let dictated = "Um, so I wanted to I wanted to follow up on the the quote from Tuesday. Like, could you send the revised numbers by Friday, you know?"
+            let rules = Cleanup.rules(dictated)
+            var clean = SuggestionPanel.Card(kind: "Clean up \u{00B7} \(rules.count) changes \u{00B7} \u{2303}\u{2325}C", color: IssueKind.voice.color,
+                                             marks: [], message: nil, why: nil, example: nil)
+            clean.cleanup = (dictated, Cleanup.withCapitalsPublic(rules, in: dictated).map { ($0.range, $0.replacement) })
+            clean.primary = .init(title: "Accept all") {}
+            clean.ignore = .init(title: "Cancel") {}
+            for (name, c) in [("main", card), ("long", long), ("cut", cut), ("term", term), ("flag", flag), ("tip", tip), ("cleanup", clean)] {
                 for style in ["roomy", "sentence", "keyboard"] {
                     for look in ["light", "dark"] {
                         SuggestionPanel.render(c, appearance: look, style: style, to: "\(CommandLine.arguments[i + 1])-\(name)-\(style)-\(look).png")
@@ -141,6 +150,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
         fixAllKey = HotKey(id: 2, modifiers: controlKey | optionKey | shiftKey, name: "Control-Option-Shift-R") { [weak self] in
             self?.watcher.fixAllAtCursor()
         }
+        cleanUpKey = HotKey(id: 3, keyCode: kVK_ANSI_C, modifiers: controlKey | optionKey, name: "Control-Option-C") { [weak self] in
+            self?.watcher.cleanUpAtCursor()
+        }
         // Start at login by default, once; the menu toggle can turn it off and that choice sticks.
         if !UserDefaults.standard.bool(forKey: "loginItemOffered") {
             UserDefaults.standard.set(true, forKey: "loginItemOffered")
@@ -170,6 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
     func allowAccessibility() { showWelcome() }
     /// Waits for the app you were typing in to take focus back, then opens the card at its cursor.
     func fixAllAtCursor() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.watcher.fixAllAtCursor() } }
+    func cleanUpAtCursor() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.watcher.cleanUpAtCursor() } }
     func fixAtCursor() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.watcher.openNearest() } }
 
     @objc func deepCheck() {

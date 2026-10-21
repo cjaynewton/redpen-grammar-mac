@@ -9,6 +9,7 @@ protocol PanelHost: AnyObject {
     func statusLine() -> (text: String, live: Bool)
     func fixAtCursor()
     func fixAllAtCursor()
+    func cleanUpAtCursor()
     func deepCheck()
     var canDeepCheck: Bool { get }
     func allowAccessibility()
@@ -296,6 +297,7 @@ struct PanelView: View {
         VStack(alignment: .leading, spacing: 12) {
             row("Fix mistake at cursor", key: "\u{2303}\u{2325}R") { close(); model.host?.fixAtCursor() }
             row("Fix all in this paragraph", key: "\u{2303}\u{2325}\u{21E7}R") { close(); model.host?.fixAllAtCursor() }
+            row("Clean up this paragraph", key: "\u{2303}\u{2325}C") { close(); model.host?.cleanUpAtCursor() }
             row("Deep check with \(model.deepName)", key: nil) { close(); model.host?.deepCheck() }
                 .disabled(!model.canDeepCheck)
         }

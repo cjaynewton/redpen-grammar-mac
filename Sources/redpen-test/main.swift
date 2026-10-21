@@ -489,7 +489,57 @@ func tipChecks() async {
     if failed > 0 { exit(1) }
 }
 
-if CommandLine.arguments.contains("--tips-check") { await tipChecks() }
+/// Clean up this paragraph (`--cleanup`): Tests/cleanup.tsv holds dictated sentences with the text they should
+/// become, and finished sentences that must come out unchanged. `--no-model` skips Apple's model (false starts).
+@MainActor
+func cleanupChecks() async {
+    var model = !CommandLine.arguments.contains("--no-model")
+    if #available(macOS 26, *) { model = model && AppleModel.isAvailable } else { model = false }
+    print("Apple model used for false starts:", model)
+    // `--cleanup a.tsv b.tsv`: finished paragraphs from other sets, none of which should change.
+    let others = CommandLine.arguments.filter { $0.hasSuffix(".tsv") }
+    if !others.isEmpty {
+        var n = 0, changed = 0
+        for file in others {
+            for line in ((try? String(contentsOfFile: file, encoding: .utf8)) ?? "").split(separator: "\n") {
+                let f = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+                guard f.count > 1, f.count < 3 || f[2].isEmpty else { continue }
+                n += 1
+                let found = await Cleanup.changes(f[1], model: model)
+                if !found.isEmpty {
+                    changed += 1
+                    print("  CHANGED", found.map { "[\($0.reason.rawValue): \"\($0.original)\"]" }.joined(separator: " "), "|", f[1].prefix(160))
+                }
+            }
+        }
+        print("clean up on finished paragraphs: \(changed)/\(n) changed")
+        return
+    }
+    let tsv = try! String(contentsOfFile: "Tests/cleanup.tsv", encoding: .utf8)
+    var right = 0, dictated = 0, changes = 0, cleanChanged = 0, clean = 0
+    for line in tsv.split(separator: "\n") {
+        let f = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+        guard f.count >= 2 else { continue }
+        let found = await Cleanup.changes(f[1], model: model)
+        let out = Cleanup.apply(found, to: f[1])
+        let cuts = found.filter { $0.reason != .capital }
+        if f[0] == "clean" {
+            clean += 1
+            if out != f[1] { cleanChanged += 1 }
+            print(out == f[1] ? "  same   " : "  CHANGED", f[1], out == f[1] ? "" : "-> \(out)")
+        } else {
+            dictated += 1; changes += cuts.count
+            if out == f[2] { right += 1 }
+            print(out == f[2] ? "  right  " : "  WRONG  ", f[1], "->", out, out == f[2] ? "" : "(wanted: \(f[2]))",
+                  cuts.map { "[\($0.reason.rawValue): \"\($0.original)\"]" }.joined(separator: " "))
+        }
+    }
+    print("clean up: \(right)/\(dictated) dictated sentences come out right, \(changes) words or phrases taken out")
+    print("clean up: \(cleanChanged)/\(clean) finished sentences changed")
+}
+
+if CommandLine.arguments.contains("--cleanup") { await cleanupChecks() }
+else if CommandLine.arguments.contains("--tips-check") { await tipChecks() }
 else if CommandLine.arguments.contains("--tips") { await tipNoise() }
 else if CommandLine.arguments.contains("--context") { await contextChecks() }
 else if CommandLine.arguments.contains("--safety") { safetyChecks() }

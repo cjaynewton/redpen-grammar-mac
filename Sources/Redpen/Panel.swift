@@ -62,6 +62,9 @@ final class SuggestionPanel: NSObject {
         var stop: Choice? = nil
         /// A style tip's examples, behind "More examples".
         var examples: TipExamples? = nil
+        /// Clean up this paragraph: the paragraph and each change in it (range in the paragraph, what replaces it).
+        /// Drawn the same way in every style: the paragraph with the cuts struck, then how it will read.
+        var cleanup: (text: String, changes: [(range: NSRange, replacement: String)])? = nil
     }
 
     /// "roomy", "sentence" or "keyboard", from the settings.
@@ -216,6 +219,7 @@ final class SuggestionPanel: NSObject {
         outer.spacing = 0
         outer.translatesAutoresizingMaskIntoConstraints = false
         switch style {
+        case _ where card.cleanup != nil: cleanupCard(card, p, outer)
         case "sentence": sentenceCard(card, p, outer)
         case "keyboard": keyboardCard(card, p, outer)
         default: roomyCard(card, p, outer)
@@ -367,6 +371,48 @@ final class SuggestionPanel: NSObject {
             string: "Fixed \(card.count) times this month", attributes: [.font: NSFont.systemFont(ofSize: 13.5, weight: .medium), .foregroundColor: card.color])) : nil
         if !left.isEmpty || right != nil { outer.addArrangedSubview(strip(left, right, p, top: 16, ruled: false)) }
         else { outer.addArrangedSubview(spacer(18)) }
+    }
+
+    // MARK: - Clean up
+
+    /// Every change before it goes in: the paragraph with what comes out struck on a soft purple ground, then the
+    /// paragraph as it will read. Accept all puts them all in; Cancel leaves the text alone.
+    private func cleanupCard(_ card: Card, _ p: Palette, _ outer: NSStackView) {
+        guard let c = card.cleanup else { return }
+        let s = section(top: 18, bottom: 18, spacing: 12)
+        s.addArrangedSubview(kindLabel(card))
+        let ns = c.text as NSString
+        let base: [NSAttributedString.Key: Any] = [.font: Self.serif(17), .foregroundColor: p.ink]
+        let marked = NSMutableAttributedString()
+        var at = 0
+        for ch in c.changes.sorted(by: { $0.range.location < $1.range.location }) where NSMaxRange(ch.range) <= ns.length && ch.range.location >= at {
+            marked.append(NSAttributedString(string: ns.substring(with: NSRange(location: at, length: ch.range.location - at)), attributes: base))
+            if ch.replacement.isEmpty {
+                marked.append(NSAttributedString(string: ns.substring(with: ch.range), attributes: [
+                    .font: Self.serif(17), .foregroundColor: p.mid, .backgroundColor: card.color.withAlphaComponent(0.13),
+                    .strikethroughStyle: NSUnderlineStyle.single.rawValue, .strikethroughColor: card.color]))
+            } else {
+                // A capital the new sentence start needs: the letter as it will read, in purple.
+                marked.append(NSAttributedString(string: ch.replacement, attributes: [.font: Self.serif(17, weight: .medium), .foregroundColor: card.color]))
+            }
+            at = NSMaxRange(ch.range)
+        }
+        marked.append(NSAttributedString(string: ns.substring(from: min(at, ns.length)), attributes: base))
+        marked.addAttribute(.paragraphStyle, value: lines(1.3), range: NSRange(location: 0, length: marked.length))
+        s.addArrangedSubview(wrapping(marked))
+        s.addArrangedSubview(rule(p))
+        var result = c.text as NSString
+        for ch in c.changes.sorted(by: { $0.range.location > $1.range.location }) where NSMaxRange(ch.range) <= result.length {
+            result = result.replacingCharacters(in: ch.range, with: ch.replacement) as NSString
+        }
+        s.addArrangedSubview(wrapping(NSAttributedString(string: result as String, attributes: [
+            .font: Self.serif(17), .foregroundColor: p.ink, .paragraphStyle: lines(1.3)])))
+        var buttons: [NSView] = []
+        if let pc = card.primary { buttons.append(button(pc, filled: true, p, height: 38, size: 15, hint: style == "keyboard" && card.takesKeys ? "Return" : nil)) }
+        if let ig = card.ignore { buttons.append(button(ig, filled: false, p, height: 38, size: 15, hint: style == "keyboard" && card.takesKeys ? "Esc" : nil)) }
+        s.setCustomSpacing(16, after: s.arrangedSubviews.last!)
+        s.addArrangedSubview(flow(buttons, spacing: 8))
+        outer.addArrangedSubview(s)
     }
 
     // MARK: - Style tip examples

@@ -126,6 +126,20 @@ public enum AppleModel {
         return a.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters)).lowercased().hasPrefix("no")
     }
 
+    /// For Clean up: whether the opening words of a dictated sentence were abandoned and said again differently
+    /// ("I want, I need the file"), as opposed to meant ("I came, I saw").
+    public static func isFalseStart(_ sentence: String, fragment: String) async -> Bool {
+        guard isAvailable else { return false }
+        let session = LanguageModelSession(instructions: "You read sentences typed by voice. Answer with one word, yes or no.")
+        let q = """
+        Someone dictated this: "\(sentence)"
+        Did they start with "\(fragment)", stop, and start over with different words? Answer yes if "\(fragment)" \
+        was dropped and replaced, no if it is part of what they mean.
+        """
+        guard let a = try? await session.respond(to: q, options: GenerationOptions(temperature: 0)).content else { return false }
+        return a.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters)).lowercased().hasPrefix("yes")
+    }
+
     /// A fragment ("Different brands.") is a style choice, not an error to fix.
     static func hasVerb(_ s: String) -> Bool {
         let tagger = NLTagger(tagSchemes: [.lexicalClass])

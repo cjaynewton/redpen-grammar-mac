@@ -604,17 +604,65 @@ final class Watcher {
         panel.hide()
         let app = NSWorkspace.shared.frontmostApplication?.processIdentifier
         Log.note("fix all: \(result.fixed.count) in \(bundleID)")
+        applyEach(result.fixed, in: el, app: app, label: "fix all")
+    }
+
+    /// Applies each fix on its own with its first suggestion, last first so earlier positions stay put.
+    private func applyEach(_ fixes: [Issue], in el: AXUIElement, app: pid_t?, label: String) {
         fixAllRunning = true
         Task { @MainActor in
             defer { self.fixAllRunning = false }
-            for i in result.fixed.reversed() {
+            for i in fixes.reversed() {
                 // Stop the moment the writer moves to another field or app: a paste would land there.
                 guard NSWorkspace.shared.frontmostApplication?.processIdentifier == app, self.stillFocused(el) else {
-                    Log.note("fix all: stopped, focus moved"); return
+                    Log.note("\(label): stopped, focus moved"); return
                 }
                 guard let pasted = self.apply(i, i.replacements[0], in: el) else { return }
                 if pasted { try? await Task.sleep(for: .milliseconds(800)) }
             }
+        }
+    }
+
+    /// Clean up this paragraph (Control-Option-C): fillers, doubled words and false starts out of the paragraph at
+    /// the cursor. Every change is shown first; nothing goes in until Accept all.
+    func cleanUpAtCursor() {
+        if panel.isVisible { panel.hide() }
+        guard let el = element, !lastText.isEmpty, !fixAllRunning else { NSSound.beep(); return }
+        let ns = lastText as NSString
+        let cur = AX.range(el, kAXSelectedTextRangeAttribute)?.location ?? 0
+        let pr = ns.paragraphRange(for: NSRange(location: min(cur, ns.length), length: 0))
+        let para = ns.substring(with: pr)
+        let text = lastText
+        Task { @MainActor [weak self] in
+            let found = await Cleanup.changes(para)
+            guard let self else { return }
+            guard let current = self.element, CFEqual(current, el), self.lastText == text else {
+                Log.note("clean up: the text changed while checking"); return
+            }
+            guard !found.isEmpty else { Log.note("clean up: nothing to take out in \(self.bundleID)"); NSSound.beep(); return }
+            let fixes = found.map { c -> Issue in
+                Issue(range: c.range.shifted(by: pr.location), kind: .voice, message: "Clean up", replacements: [c.replacement], original: c.original)
+            }
+            let n = found.filter { $0.reason != .capital }.count
+            var card = SuggestionPanel.Card(kind: "Clean up \u{00B7} \(n) change\(n == 1 ? "" : "s") \u{00B7} \u{2303}\u{2325}C",
+                                            color: IssueKind.voice.color, marks: [], message: nil, why: nil, example: nil)
+            card.title = "Clean up this paragraph"
+            card.cleanup = (para.trimmingCharacters(in: .newlines), found.map { ($0.range, $0.replacement) })
+            let app = NSWorkspace.shared.frontmostApplication?.processIdentifier
+            card.primary = .init(title: "Accept all") { [weak self] in
+                guard let self else { return }
+                Log.note("clean up: \(fixes.count) changes in \(self.bundleID)")
+                self.applyEach(fixes, in: el, app: app, label: "clean up")
+            }
+            card.ignore = .init(title: "Cancel") {}
+            let anchor = self.lineRects(el, NSRange(location: pr.location, length: min(1, pr.length))).first.map(AX.toCocoa)
+                ?? AX.frame(el).map { f in let c = AX.toCocoa(f); return CGRect(x: c.minX + 8, y: c.minY, width: 1, height: 1) }
+            guard let anchor else { NSSound.beep(); return }
+            self.watcherCard = true
+            self.cardMark = nil
+            self.panel.style = self.config.cardStyle
+            self.panel.appearance = self.config.cardAppearance
+            self.panel.show(card, below: anchor, avoid: [])
         }
     }
 
