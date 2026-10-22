@@ -17,6 +17,8 @@ Everything runs on your Mac. Your writing is never sent anywhere unless you choo
 - **Click an underline** to see the fix, a one-line reason and an example. One click applies it.
 - **Choose what you see when you click a mistake,** in Settings: **Just the fix** shows the fix large with its lesson, **The fix in my sentence** shows your whole sentence with the fix in place, and **One by one, with the keyboard** lets you work through a draft without the mouse: Return fixes, Esc skips, Tab goes to the next mistake.
 - **Fix all:** when a paragraph has several mistakes, the card offers **Fix all**, or press Control-Option-Shift-R. Each word is fixed on its own, so bold and italics stay.
+- **Clean up after voice typing:** press Control-Option-C to take the ums, repeated words and false starts out of the paragraph you are in. You see every change before it goes in.
+- **Style tips** (optional): purple notes for writing that is correct but could be stronger, like filler words, claims with no source, slow starts and clichés. Each tip comes with examples and a note on when to leave it alone. All off until you switch them on in **Settings > Style tips**.
 - **Calm by default:** Redpen underlines only sure spelling and grammar mistakes. Switch **Underline** to **Everything** in the menu to also see your style rules and Apple's "maybe" suggestions.
 - **Spelling that reads the sentence:** with Apple Intelligence on, the first suggestion is the word the sentence needs. "I liked it, thougt it cost too much" offers *though*; "I thougt about it" offers *thought*. The choice is only ever one of the dictionary's own suggestions.
 - **Your patterns** (in the menu) shows which mistakes keep coming back this week, and whether each is going up or down. The record stays on your Mac, holds only the flagged words and the fix, never your surrounding text, and keeps the last 90 days.
@@ -120,7 +122,7 @@ House style is for rules that aren't grammar: a personal or team style guide. Al
 - Colons only for labels and lists, not to join two thoughts
 - Flag sentences that came through in another language (handy with voice typing)
 - Hold spelling to one English: Canadian (colour, centre), American or British
-- Three starter sets to switch on: **Plain English** (*utilize* becomes *use*), **Sounds like AI** (*delve*, *tapestry*, *seamless*) and **Hedging** (*I think*, *sort of*)
+- **Style tips**, in three groups you can switch on one by one: **Clear** (filler words, softeners, claims with no source, saying it twice, long-winded phrases), **Strong** (hidden doers, verbs turned into nouns, slow starts, apologies) and **Fresh** (clichés, words that sound machine-made, promises you can't keep)
 
 Your own lists live under **Advanced**, at the bottom of Settings:
 
