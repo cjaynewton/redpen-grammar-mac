@@ -103,6 +103,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
             }
             exit(0)
         }
+        // Debug: live Replace test in the app in front (see ReplaceTest.swift).
+        if let i = CommandLine.arguments.firstIndex(of: "--replace-test"), i + 1 < CommandLine.arguments.count {
+            ReplaceTest.run(watcher, results: CommandLine.arguments[i + 1]); return
+        }
         // Debug: Deep check's Test connection for one helper, printed. `--test-connection chatgpt`
         if let i = CommandLine.arguments.firstIndex(of: "--test-connection"), i + 1 < CommandLine.arguments.count {
             var c = watcher.config
