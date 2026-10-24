@@ -50,7 +50,7 @@ Click a mistake and you choose, in Settings, what the fix box shows:
 
 - Redpen checks your writing on your Mac. Nothing you type leaves it unless you use Deep check.
 - It never reads password boxes, password managers, or bank and payment websites. You can add more sites in the settings file.
-- Your settings, mistakes list, word counts and log are locked so only you can open them. The log lists app names and counts, never your words. The word counts are numbers only.
+- Your settings, mistakes list, word counts and log are locked so only you can open them. The log lists app names and counts, never your words. The word counts are numbers only. To count only words you typed, Redpen notes when you last pressed a key, the time only, never which key.
 - Deep check sends only the paragraph you ask it to check, and only to the AI you picked. Redpen switches off that AI's extra tools first, so it can only read the text and reply.
 - Once a day Redpen asks GitHub whether there's a newer version. It sends nothing you wrote. You can turn this off in Settings.
 
