@@ -126,8 +126,8 @@ public struct TipExamples: Sendable {
             why: "Readers now link these words with text a machine wrote, and they trust it less.",
             pairs: [p("We [seamlessly] handle your booking.", "We {book you in one call}."),
                     p("Let's [delve] into your options.", "Let's {look at} your options."),
-                    p("Our [robust] process keeps you informed.", "{We text you after every visit.}"),
-                    p("We [leverage] local suppliers.", "We {buy from} local suppliers.")],
+                    p("We [leverage] local suppliers.", "We {buy from} local suppliers."),
+                    p("We [not only] fix leaks but also clear drains.", "We fix leaks {and} clear drains.")],
             leaveWhen: "Leave it when the word is the plain one for your trade, like \"landscape\" for a landscaper."),
         "promises": TipExamples(
             why: "A promise you can't keep is easy to doubt and hard to defend.",

@@ -241,6 +241,8 @@ func safetyChecks() {
     check("plain English catches a phrase", plain.contains { $0.original == "in order to" && $0.replacements == ["to"] })
     check("starter set ignores part of a word", Rules.check("The redelve team.", longform: false, style: sets).allSatisfy { $0.kind != .voice })
     check("curly apostrophe matches", Rules.check("It\u{2019}s worth noting the cost.", longform: false, style: sets).contains { $0.kind == .voice })
+    check("not only... but also is flagged", Rules.check("We not only fix leaks but also clear drains.", longform: false, style: sets).contains { $0.kind == .voice && $0.original.lowercased() == "not only" })
+    check("not only without a but stays quiet", Rules.check("This is not only mine. The rest is yours.", longform: false, style: sets).allSatisfy { $0.kind != .voice })
     check("switched-off set stays quiet", Rules.check("I think so.", longform: false, style: sets).allSatisfy { $0.kind != .voice })
     check("all capitals stay all capitals", Rules.check("UTILIZE IT.", longform: false, style: sets).contains { $0.replacements == ["USE"] })
     sets.containerWords = ["in order to"]

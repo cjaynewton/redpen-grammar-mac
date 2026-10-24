@@ -39,7 +39,7 @@ public enum DeepPrompt {
         for tip in StyleTip.all where style.tips.contains(tip.id) {
             switch tip.id {
             case "plain": rules.append("prefer the short plain word (use, not utilize; to, not in order to)")
-            case "ai": rules.append("avoid words readers link with machine writing, such as delve, tapestry, seamless")
+            case "ai": rules.append("avoid words readers link with machine writing, such as delve, tapestry, seamless, and the not only... but also build-up")
             case "softeners": rules.append("cut softeners such as I think, sort of, maybe")
             case "filler": rules.append("cut filler words such as basically, actually, you know")
             case "unsourced": rules.append("no claims with an unnamed source, such as studies show or experts say")

@@ -311,7 +311,9 @@ public struct StyleTip: Sendable {
         message: "Readers link this with machine writing. Say the concrete thing.",
         matchers: list([("delve", nil), ("delves", nil), ("tapestry", nil), ("landscape", nil), ("leverage", nil),
                         ("seamless", nil), ("seamlessly", nil), ("robust", nil), ("holistic", nil), ("synergy", nil),
-                        ("paradigm", nil), ("ecosystem", nil), ("it's worth noting", nil), ("in today's fast-paced world", nil)]))
+                        ("paradigm", nil), ("ecosystem", nil), ("it's worth noting", nil), ("in today's fast-paced world", nil)])
+            // "Not only X but also Y" (The Economist, Jul 30 2026): only when "but" follows in the same sentence.
+            + [Matcher(regex: re("\\bnot only\\b(?=[^.!?\\n]*\\bbut\\b)"))])
 
     static let promises = StyleTip(
         id: "promises", name: "Promises you can\u{2019}t keep", group: .fresh, samples: ["guaranteed", "never fails"], becomes: nil,
