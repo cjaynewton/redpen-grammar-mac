@@ -18,25 +18,32 @@ public final class WordLog: @unchecked Sendable {
     }
 
     /// Writes what was added since the last save, merged with what other copies of Redpen saved, and drops
-    /// anything older than `keepDays`. Nothing is lost if another copy saves at the same moment.
-    public func save(keepDays: Int = 90, now: Date = Date()) {
+    /// anything older than `keepDays`. Nothing is lost if another copy saves at the same moment. Never waits more
+    /// than about a second for another copy's lock; when it can't save, the counts stay in memory for next time.
+    @discardableResult
+    public func save(keepDays: Int = 90, now: Date = Date()) -> Bool {
         let add = lock.withLock { () -> [Int: Int] in defer { pending = [:] }; return pending }
+        func keep() { lock.withLock { for (h, n) in add { pending[h, default: 0] += n } } }
         let oldest = Self.hour(now.addingTimeInterval(-Double(keepDays) * 86_400))
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let fd = open(url.path + ".lock", O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
-        guard fd >= 0 else { return }
+        guard fd >= 0 else { keep(); return false }
         defer { close(fd) }
-        var held = flock(fd, LOCK_EX)
-        while held != 0 && errno == EINTR { held = flock(fd, LOCK_EX) }
-        guard held == 0 else { return }
+        var held = false
+        for _ in 0..<20 {
+            if flock(fd, LOCK_EX | LOCK_NB) == 0 { held = true; break }
+            usleep(50_000)
+        }
+        guard held else { keep(); return false }
         defer { flock(fd, LOCK_UN) }
         var hours = read()
         for (h, n) in add { hours[h, default: 0] += n }
         hours = hours.filter { $0.key >= oldest }
         let file = Dictionary(uniqueKeysWithValues: hours.map { (String($0.key), $0.value) })
-        guard let data = try? JSONSerialization.data(withJSONObject: file, options: [.sortedKeys]) else { return }
-        try? data.write(to: url, options: .atomic)
+        guard let data = try? JSONSerialization.data(withJSONObject: file, options: [.sortedKeys]),
+              (try? data.write(to: url, options: .atomic)) != nil else { keep(); return false }
         Private.lock(url)
+        return true
     }
 
     /// Every saved hour plus what is waiting to be saved, as (start of the hour, words).
@@ -69,9 +76,11 @@ public final class WordLog: @unchecked Sendable {
 
 /// Counts the words a writer adds to one field, from the moment Redpen starts reading it. Text already in the
 /// field (an old document, a quoted reply) is the starting point, not counted. Deleting and retyping counts the
-/// new words; deleting alone counts nothing.
+/// new words; deleting alone counts nothing. A jump of more than `maxStep` words at once (a paste, a draft or
+/// template loading, another document opening in the same field) isn't typing, so it becomes the new starting point.
 public struct WordGrowth: Sendable {
     private var last: Int?
+    public static let maxStep = 40
 
     public init() {}
 
@@ -80,7 +89,8 @@ public struct WordGrowth: Sendable {
         let n = WordLog.count(text)
         defer { last = n }
         guard let last else { return 0 }
-        return max(0, n - last)
+        let step = n - last
+        return step > Self.maxStep ? 0 : max(0, step)
     }
 
     /// Starts again from the next text seen, for a new field.

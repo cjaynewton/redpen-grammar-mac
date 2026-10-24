@@ -4,25 +4,25 @@ import Foundation
 /// that would be a guess. The checks live here, apart from Accessibility, so they can be tested.
 public enum DeepReplace {
     public enum Spot: Equatable, Sendable {
-        /// The checked text, unchanged, at this range of the field now.
+        /// The field reads exactly as it did when Deep check started, so the checked text is at this range.
         case at(NSRange)
-        /// The checked text is no longer in the field: it was edited while Deep check ran.
+        /// Something in the field changed while Deep check ran. Which text is which would be a guess.
         case changed
-        /// The checked text appears more than once and has moved, so which one to replace would be a guess.
-        case ambiguous
     }
 
-    /// Where `original` sits in `current`: at its old range if it is still there, else its one and only copy
-    /// (text typed above it moves it, without changing it). Anything else refuses.
-    public static func locate(_ original: String, was range: NSRange, in current: String) -> Spot {
+    /// Where the checked text is now. Only when the whole field is exactly as it was when Deep check started:
+    /// a match found anywhere else could be a copy of the paragraph, or another paragraph moved into its place.
+    public static func locate(_ original: String, was range: NSRange, field before: String, in current: String) -> Spot {
+        guard !original.isEmpty, current == before else { return .changed }
         let ns = current as NSString
-        guard !original.isEmpty else { return .changed }
-        if NSMaxRange(range) <= ns.length, ns.substring(with: range) == original { return .at(range) }
-        let first = ns.range(of: original, options: .literal)
-        guard first.location != NSNotFound else { return .changed }
-        let after = NSMaxRange(first)
-        let again = ns.range(of: original, options: .literal, range: NSRange(location: after, length: ns.length - after))
-        return again.location == NSNotFound ? .at(first) : .ambiguous
+        guard NSMaxRange(range) <= ns.length, ns.substring(with: range) == original else { return .changed }
+        return .at(range)
+    }
+
+    /// True when the text has a line reading REVISED, CHANGES or NOTES on its own. A reply can't be split
+    /// safely then, so Replace isn't offered; Copy still is.
+    public static func hasHeadingLine(_ text: String) -> Bool {
+        text.components(separatedBy: .newlines).contains { ["REVISED", "CHANGES", "NOTES"].contains($0.trimmingCharacters(in: .whitespaces)) }
     }
 
     /// The range of `range` in `text` without the spaces and line breaks around it, so a replacement keeps the

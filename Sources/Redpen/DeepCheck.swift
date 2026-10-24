@@ -41,6 +41,7 @@ final class DeepCheck {
         guard let text = target?.text, let config = lastConfig else { return }
         let name = config.deepCheckWith == "auto" ? "your AI" : config.deepCheckName
         revised = nil
+        testButton?.isEnabled = true  // a test still running is dropped along with its answer
         show(mode == .email ? "Asking \(name) to rewrite this as an email\u{2026}" : "Asking \(name)\u{2026}")
         setNote(note)
         let prompt = DeepPrompt.build(config.houseStyle, mode: mode)

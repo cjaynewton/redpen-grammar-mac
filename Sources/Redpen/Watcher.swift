@@ -770,6 +770,8 @@ final class Watcher {
         let range: NSRange
         /// The checked text exactly as sent.
         let text: String
+        /// The whole field when Deep check started. Replace goes ahead only if the field still reads exactly this.
+        let field: String
         /// False when only part of the text could be sent (over 20,000 characters): Replace would cut the rest.
         let whole: Bool
     }
@@ -790,8 +792,16 @@ final class Watcher {
         guard r.length > 0 else { return nil }
         let text = ns.substring(with: r)
         let app = NSRunningApplication(processIdentifier: AX.pid(el))?.localizedName ?? bundleID
-        return DeepTarget(el: el, pid: AX.pid(el), app: app, range: r,
-                          text: String(text.prefix(20000)), whole: text.count <= 20000)
+        return DeepTarget(el: el, pid: AX.pid(el), app: app, range: r, text: String(text.prefix(20000)), field: t,
+                          whole: text.count <= 20000 && !DeepReplace.hasHeadingLine(text))
+    }
+
+    /// True when the field still reads `field` and its selection is exactly `range`, holding the checked text.
+    private func selectionHolds(_ target: DeepTarget, _ range: NSRange, field: String) -> Bool {
+        guard let now: String = AX.attr(target.el, kAXValueAttribute), now == field,
+              let sel = AX.range(target.el, kAXSelectedTextRangeAttribute), sel == range else { return false }
+        let selText: String? = AX.attr(target.el, kAXSelectedTextAttribute)
+        return selText == nil || selText == target.text
     }
 
     enum ReplaceResult {
@@ -803,25 +813,28 @@ final class Watcher {
     /// as it was sent. Edited while Deep check ran, gone, or there twice after moving: it refuses and changes nothing.
     /// Call once the writer's app is in front again.
     func replace(_ target: DeepTarget, with revised: String) -> ReplaceResult {
-        guard target.whole else { return .refused("This text was too long to send whole, so Replace would cut it short. Use Copy revised text.") }
+        guard target.whole else { return .refused("Replace can\u{2019}t safely put this text back (it is very long, or has a line reading REVISED, CHANGES or NOTES). Use Copy revised text.") }
         guard let current: String = AX.attr(target.el, kAXValueAttribute) else {
             return .refused("Redpen can\u{2019}t reach that text any more. The window may have closed. Use Copy revised text.")
         }
         let range: NSRange
-        switch DeepReplace.locate(target.text, was: target.range, in: current) {
+        switch DeepReplace.locate(target.text, was: target.range, field: target.field, in: current) {
         case .at(let r): range = r
         case .changed:
             return .refused("The text changed while Deep check was running, so Replace stopped to keep your edits. Run Deep check again, or use Copy revised text.")
-        case .ambiguous:
-            return .refused("That text now appears more than once, so Redpen can\u{2019}t tell which to replace. Use Copy revised text.")
         }
         guard revised != target.text else { return .refused("Deep check found nothing to change.") }
         guard AX.setRange(target.el, range) else { return .refused("\(target.app) didn\u{2019}t let Redpen select the text. Use Copy revised text.") }
         let expected = (current as NSString).replacingCharacters(in: range, with: revised)
+        // Right before writing: the selection must still be exactly the checked text, in an unchanged field.
+        guard selectionHolds(target, range, field: current) else {
+            return .refused("The selection moved before Redpen could write. Nothing was changed. Press Replace again.")
+        }
         if AX.set(target.el, kAXSelectedTextAttribute, revised as CFString),
            let after: String = AX.attr(target.el, kAXValueAttribute), after == expected {
             Log.note("deep check: replaced \((target.text as NSString).length) chars in \(target.app)")
             lastText = ""
+            growth.reset()  // Redpen's own rewrite isn't words the writer wrote
             return .done(pasted: false)
         }
         // Apps that ignore direct writes get a paste over the selection, only into the field that is in focus now.
@@ -832,9 +845,14 @@ final class Watcher {
         guard NSRunningApplication(processIdentifier: target.pid)?.isActive == true, stillFocused(target.el) else {
             return .refused("Click back into the text in \(target.app), then press Replace again.")
         }
+        // A paste lands wherever the selection is, so check it once more just before.
+        guard AX.setRange(target.el, range), selectionHolds(target, range, field: current) else {
+            return .refused("The selection moved before Redpen could paste. Nothing was changed. Press Replace again.")
+        }
         Paste.replaceSelection(with: revised)
         Log.note("deep check: pasted over \((target.text as NSString).length) chars in \(target.app)")
         lastText = ""
+        growth.reset()
         return .done(pasted: true)
     }
 }

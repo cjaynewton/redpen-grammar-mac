@@ -82,8 +82,9 @@ public struct PatternSummary: Sendable, Equatable {
                 if a == b { trend = "about the same per 1,000 words" }
                 else if rNow < rBefore { trend = "\(a) per 1,000 words, down from \(b)" }
                 else { trend = "\(a) per 1,000 words, up from \(b)" }
-            } else if wordsBefore >= Self.minWords, wordsNow < Self.minWords, before > 0, now < usual || now == 0 {
-                // Fewer fixes, but also too little writing to tell: don't call it progress.
+            } else if start != nil, before > 0 {
+                // Redpen counts words, but this week or the weeks before had too little writing counted for a rate.
+                // Raw counts could make a light week look like progress, so make no claim.
                 trend = "too little writing to compare"
             } else if before == 0 { trend = now > 0 ? "new this week" : "none this week" }
             else if now == 0 { trend = "none this week, down from about \(max(usual, 1)) a week" }

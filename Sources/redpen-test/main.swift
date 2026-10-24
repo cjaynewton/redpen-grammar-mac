@@ -343,19 +343,21 @@ func safetyChecks() {
     let rPara = "Their going home now."
     let rDoc = "Dear Sam,\n\n\(rPara)\n\nThanks"
     let at = (rDoc as NSString).range(of: rPara)
-    check("replace finds unchanged text in place", DeepReplace.locate(rPara, was: at, in: rDoc) == .at(at))
+    check("replace finds unchanged text in place", DeepReplace.locate(rPara, was: at, field: rDoc, in: rDoc) == .at(at))
     let typedAbove = "Hi again.\n" + rDoc
-    check("replace follows text moved by typing above it",
-          DeepReplace.locate(rPara, was: at, in: typedAbove) == .at((typedAbove as NSString).range(of: rPara)))
+    check("replace refuses when anything else in the field changed", DeepReplace.locate(rPara, was: at, field: rDoc, in: typedAbove) == .changed)
     check("replace refuses text edited during the check",
-          DeepReplace.locate(rPara, was: at, in: rDoc.replacingOccurrences(of: "now", with: "soon")) == .changed)
-    check("replace refuses a one-letter edit", DeepReplace.locate(rPara, was: at, in: rDoc.replacingOccurrences(of: "home", with: "hone")) == .changed)
-    let rTwice = "\(rPara)\n\nX\n\n\(rPara)"
-    check("replace refuses when moved text appears twice", DeepReplace.locate(rPara, was: NSRange(location: 3, length: (rPara as NSString).length), in: rTwice) == .ambiguous)
-    check("replace uses the old place even if a copy exists elsewhere",
-          DeepReplace.locate(rPara, was: NSRange(location: 0, length: (rPara as NSString).length), in: rTwice) == .at(NSRange(location: 0, length: (rPara as NSString).length)))
-    check("replace refuses empty text", DeepReplace.locate("", was: NSRange(location: 0, length: 0), in: rDoc) == .changed)
-    check("replace refuses a deleted field", DeepReplace.locate(rPara, was: at, in: "") == .changed)
+          DeepReplace.locate(rPara, was: at, field: rDoc, in: rDoc.replacingOccurrences(of: "now", with: "soon")) == .changed)
+    check("replace refuses a one-letter edit", DeepReplace.locate(rPara, was: at, field: rDoc, in: rDoc.replacingOccurrences(of: "home", with: "hone")) == .changed)
+    // Two identical paragraphs; the checked first one is deleted mid-check. The copy must never be overwritten.
+    let rTwice = "\(rPara)\n\n\(rPara)"
+    let rFirst = NSRange(location: 0, length: (rPara as NSString).length)
+    check("replace never moves to a copy after the checked text is deleted",
+          DeepReplace.locate(rPara, was: rFirst, field: rTwice, in: String(rTwice.dropFirst((rPara as NSString).length + 2))) == .changed)
+    check("replace refuses empty text", DeepReplace.locate("", was: NSRange(location: 0, length: 0), field: rDoc, in: rDoc) == .changed)
+    check("replace refuses a deleted field", DeepReplace.locate(rPara, was: at, field: rDoc, in: "") == .changed)
+    check("text with its own NOTES line can't be replaced", DeepReplace.hasHeadingLine("Plan\nNOTES\nBring the samples.")
+          && !DeepReplace.hasHeadingLine("These notes matter."))
     let padded = "  \(rPara)\n"
     check("checked range leaves out spaces and the line break",
           (padded as NSString).substring(with: DeepReplace.trimmed(NSRange(location: 0, length: (padded as NSString).length), in: padded)) == rPara)
@@ -374,6 +376,8 @@ func safetyChecks() {
     check("typed words are counted", g.added("one two three four five six seven") == 2)
     check("deleting counts nothing", g.added("one two") == 0)
     check("retyped words count again", g.added("one two three") == 1)
+    check("a pasted block isn't counted as writing", g.added("one two three " + String(repeating: "word ", count: 200)) == 0)
+    check("typing after a paste counts from there", g.added("one two three " + String(repeating: "word ", count: 200) + "more") == 1)
     g.reset()
     check("a new field starts from its own text", g.added("a b c d e f g h") == 0)
     let wURL = FileManager.default.temporaryDirectory.appendingPathComponent("redpen-words-\(UUID().uuidString).json")
@@ -634,7 +638,7 @@ func rateChecks() {
     check("without word counts the old trend stays", s.rows.first?.trend == "down from about 2 a week" && s.rateLine == nil)
     // Counting began this week: fixes from before have no words, so no rate comparison and no false "down".
     s = PatternSummary(recs, words: [(now.addingTimeInterval(-2 * day), 1500)], now: now)
-    check("fixes from before counting began aren't compared", s.rows.first?.trend == "down from about 2 a week")
+    check("fixes from before counting began aren't compared", s.rows.first?.trend == "too little writing to compare")
     check("first counted week has a rate", s.rateThisWeek.map { PatternSummary.format($0) } == "0.7")
     print(failed == 0 ? "rate checks: all pass" : "rate checks: \(failed) failed")
     if failed > 0 { exit(1) }
