@@ -812,11 +812,21 @@ final class Watcher {
     }
 
     /// True when the field still reads `field` and its selection is exactly `range`, holding the checked text.
+    /// Browsers apply a new selection a moment after it is set, so this waits up to half a second for it to show.
     private func selectionHolds(_ target: DeepTarget, _ range: NSRange, field: String) -> Bool {
-        guard let now: String = AX.attr(target.el, kAXValueAttribute), now.utf16.elementsEqual(field.utf16),
-              let sel = AX.range(target.el, kAXSelectedTextRangeAttribute), sel == range else { return false }
-        let selText: String? = AX.attr(target.el, kAXSelectedTextAttribute)
-        return selText.map { $0.utf16.elementsEqual(target.text.utf16) } ?? true
+        let until = Date().addingTimeInterval(0.5)
+        var why = ""
+        repeat {
+            let now: String? = AX.attr(target.el, kAXValueAttribute)
+            let sel = AX.range(target.el, kAXSelectedTextRangeAttribute)
+            let selText: String? = AX.attr(target.el, kAXSelectedTextAttribute)
+            guard let now, now.utf16.elementsEqual(field.utf16) else { Log.note("replace: the field changed"); return false }
+            if sel == range, selText.map({ $0.utf16.elementsEqual(target.text.utf16) }) ?? true { return true }
+            why = "selection \(sel.map { "\($0.location),\($0.length)" } ?? "none") wanted \(range.location),\(range.length), selected text \(selText == nil ? "unreadable" : "\((selText! as NSString).length) chars")"
+            usleep(30_000)
+        } while Date() < until
+        Log.note("replace: \(why)")
+        return false
     }
 
     enum ReplaceResult {

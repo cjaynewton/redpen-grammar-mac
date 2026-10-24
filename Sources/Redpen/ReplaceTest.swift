@@ -23,8 +23,30 @@ enum ReplaceTest {
             AX.set(appEl, "AXManualAccessibility", kCFBooleanTrue)
             AX.set(appEl, "AXEnhancedUserInterface", kCFBooleanTrue)
             await pause(1)
-            guard let field = find(in: appEl, containing: paragraphs[1]) else { print("FAIL no field holding the test text"); exit(1) }
-            AX.set(field, kAXFocusedAttribute, kCFBooleanTrue)
+            // The field Redpen's watcher is reading, if it holds the test text (it knows how to find Word's text);
+            // else a search of the window.
+            await pause(1.5)
+            @MainActor func watchedField() -> AXUIElement? {
+                w.element.flatMap { e -> AXUIElement? in
+                    let v: String? = AX.attr(e, kAXValueAttribute)
+                    return v?.contains(paragraphs[1]) == true ? e : nil
+                }
+            }
+            var watched = watchedField()
+            // A new mail message starts in the To field: Tab along to the body.
+            var tabs = 0
+            while watched == nil, find(in: appEl, containing: paragraphs[1]) == nil, tabs < 5 {
+                Paste.key(48)  // Tab
+                tabs += 1
+                await pause(1)
+                watched = watchedField()
+            }
+            guard let field = watched ?? find(in: appEl, containing: paragraphs[1]) else {
+                let v: String? = w.element.flatMap { AX.attr($0, kAXValueAttribute) }
+                print("FAIL no field holding the test text; the watched field reads: \(v.map { $0.debugDescription } ?? "nothing")")
+                exit(1)
+            }
+            if watched == nil { AX.set(field, kAXFocusedAttribute, kCFBooleanTrue) }
             func value() -> String { AX.attr(field, kAXValueAttribute) ?? "" }
             func caret(_ marker: String) -> Bool {
                 let r = (value() as NSString).range(of: marker)
