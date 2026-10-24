@@ -866,7 +866,9 @@ final class Watcher {
         // The slow reads come first and the app in front is checked last, and Cmd+V goes to that app alone, so a
         // switch to another app during the checks can't receive the paste.
         let pasted = Paste.replaceSelection(with: revised, to: target.pid) { [self] in
+            // The focus check can walk Word's whole page, so the selection is checked again after it.
             selectionHolds(target, range, field: current) && stillFocused(target.el)
+                && selectionHolds(target, range, field: current)
                 && NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid
         }
         guard pasted else { return .refused("Focus or the selection moved before Redpen could paste. Nothing was changed. Press Replace again.") }
@@ -906,12 +908,18 @@ enum Paste {
         pb.setString(s, forType: .string)
         ours = pb.changeCount
         let mine = ours
-        if let ready, !ready() {
-            // Put the writer's clipboard back, unless they copied something new meanwhile.
-            if pb.changeCount == mine, let items = saved { pb.clearContents(); if !items.isEmpty { pb.writeObjects(items) } }
-            saved = nil
-            ours = -1
-            return false
+        if let ready {
+            let ok = ready()
+            // Something else (a clipboard manager, a copy) changed the clipboard during the checks: Cmd+V would paste
+            // that, not Redpen's text. Leave the clipboard as it now is and paste nothing.
+            guard pb.changeCount == mine else { saved = nil; ours = -1; return false }
+            if !ok {
+                // Put the writer's clipboard back.
+                if let items = saved { pb.clearContents(); if !items.isEmpty { pb.writeObjects(items) } }
+                saved = nil
+                ours = -1
+                return false
+            }
         }
         key(9, flags: .maskCommand, to: pid)  // V
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
