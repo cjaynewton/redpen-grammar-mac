@@ -40,8 +40,11 @@ public struct PatternSummary: Sendable, Equatable {
 
     public init(_ records: [MistakeRecord], words written: [(date: Date, words: Int)] = [], now: Date = Date()) {
         let day = 86_400.0
+        // Words are saved by the hour, so fixes are placed by their hour too and weeks end at the end of this hour:
+        // the words and fixes of one sitting always land in the same week.
+        let end = (now.timeIntervalSince1970 / 3600).rounded(.down) * 3600 + 3600
         func week(_ d: Date) -> Int? {  // 7 = this week, 0 = eight weeks ago
-            let age = now.timeIntervalSince(d)
+            let age = end - (d.timeIntervalSince1970 / 3600).rounded(.down) * 3600 - 1
             guard age >= 0 else { return nil }
             let w = 7 - Int(age / (7 * day))
             return w >= 0 ? w : nil

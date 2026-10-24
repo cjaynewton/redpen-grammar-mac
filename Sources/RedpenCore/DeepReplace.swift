@@ -13,9 +13,11 @@ public enum DeepReplace {
     /// Where the checked text is now. Only when the whole field is exactly as it was when Deep check started:
     /// a match found anywhere else could be a copy of the paragraph, or another paragraph moved into its place.
     public static func locate(_ original: String, was range: NSRange, field before: String, in current: String) -> Spot {
-        guard !original.isEmpty, current == before else { return .changed }
+        // Compared unit by unit: Swift's == treats "é" and "e" plus an accent as equal, which would shift every
+        // position after them while the text still "matched".
+        guard !original.isEmpty, current.utf16.elementsEqual(before.utf16) else { return .changed }
         let ns = current as NSString
-        guard NSMaxRange(range) <= ns.length, ns.substring(with: range) == original else { return .changed }
+        guard NSMaxRange(range) <= ns.length, ns.substring(with: range).utf16.elementsEqual(original.utf16) else { return .changed }
         return .at(range)
     }
 
@@ -35,6 +37,15 @@ public enum DeepReplace {
         while start < end, let u = Unicode.Scalar(ns.character(at: start)), ws.contains(u) { start += 1 }
         while end > start, let u = Unicode.Scalar(ns.character(at: end - 1)), ws.contains(u) { end -= 1 }
         return NSRange(location: start, length: end - start)
+    }
+
+    /// True when a reply has exactly the form Deep check asks for: one REVISED, then one CHANGES, then at most
+    /// one NOTES. Anything else (a heading the AI corrected inside the text, a heading twice, out of order) means
+    /// the revised text can't be told apart from the rest for sure, so Replace isn't offered.
+    public static func wellFormed(_ reply: String) -> Bool {
+        let heads = reply.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { ["REVISED", "CHANGES", "NOTES"].contains($0) }
+        return heads == ["REVISED", "CHANGES"] || heads == ["REVISED", "CHANGES", "NOTES"]
     }
 
     /// The text under REVISED in a Deep check reply, or nil when the reply has none (an error, a refusal).

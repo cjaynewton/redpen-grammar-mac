@@ -356,6 +356,17 @@ func safetyChecks() {
           DeepReplace.locate(rPara, was: rFirst, field: rTwice, in: String(rTwice.dropFirst((rPara as NSString).length + 2))) == .changed)
     check("replace refuses empty text", DeepReplace.locate("", was: NSRange(location: 0, length: 0), field: rDoc, in: rDoc) == .changed)
     check("replace refuses a deleted field", DeepReplace.locate(rPara, was: at, field: rDoc, in: "") == .changed)
+    check("a normal reply can be put back", DeepReplace.wellFormed("REVISED\nFine.\n\nCHANGES\n- x\n\nNOTES\n- y"))
+    check("a heading the AI corrected inside the text blocks Replace",
+          !DeepReplace.wellFormed("REVISED\nPlan\nNOTES\nBring the samples.\n\nCHANGES\n- NTOES to NOTES"))
+    check("a reply without CHANGES blocks Replace", !DeepReplace.wellFormed("REVISED\nPlan\nNOTES\nBring the samples."))
+    check("a heading twice blocks Replace", !DeepReplace.wellFormed("REVISED\nA\nCHANGES\n- x\nCHANGES\n- y"))
+    // Same text to Swift's ==, different positions to Accessibility: "é" against "e" plus an accent.
+    let composed = String(repeating: "\u{E9}", count: 12) + "\nTheir home.\nTheir home."
+    let decomposed = String(repeating: "e\u{301}", count: 12) + "\nTheir home.\nTheir home."
+    let secondPara = NSRange(location: (composed as NSString).length - 11, length: 11)
+    check("an accent written another way counts as a change",
+          DeepReplace.locate("Their home.", was: secondPara, field: composed, in: decomposed) == .changed)
     check("text with its own NOTES line can't be replaced", DeepReplace.hasHeadingLine("Plan\nNOTES\nBring the samples.")
           && !DeepReplace.hasHeadingLine("These notes matter."))
     let padded = "  \(rPara)\n"
@@ -376,8 +387,8 @@ func safetyChecks() {
     check("typed words are counted", g.added("one two three four five six seven") == 2)
     check("deleting counts nothing", g.added("one two") == 0)
     check("retyped words count again", g.added("one two three") == 1)
-    check("a pasted block isn't counted as writing", g.added("one two three " + String(repeating: "word ", count: 200)) == 0)
-    check("typing after a paste counts from there", g.added("one two three " + String(repeating: "word ", count: 200) + "more") == 1)
+    check("a pasted block isn't counted as writing", g.added("one two three " + String(repeating: "word ", count: 300)) == 0)
+    check("typing after a paste counts from there", g.added("one two three " + String(repeating: "word ", count: 300) + "more") == 1)
     g.reset()
     check("a new field starts from its own text", g.added("a b c d e f g h") == 0)
     let wURL = FileManager.default.temporaryDirectory.appendingPathComponent("redpen-words-\(UUID().uuidString).json")
@@ -640,6 +651,16 @@ func rateChecks() {
     s = PatternSummary(recs, words: [(now.addingTimeInterval(-2 * day), 1500)], now: now)
     check("fixes from before counting began aren't compared", s.rows.first?.trend == "too little writing to compare")
     check("first counted week has a rate", s.rateThisWeek.map { PatternSummary.format($0) } == "0.7")
+    // Words at 12:50 and a fix at 12:51 a week ago, now 12:45: both belong to the same week.
+    let cal = Calendar(identifier: .gregorian)
+    var parts = cal.dateComponents(in: TimeZone(identifier: "UTC")!, from: now)
+    parts.minute = 45; parts.second = 0; parts.nanosecond = 0
+    let at1245 = cal.date(from: parts)!
+    let wk = at1245.addingTimeInterval(-7 * day)
+    let fixAt = MistakeRecord(date: wk.addingTimeInterval(6 * 60), lesson: "its-its", title: "its", original: "its", replacement: "it's", app: "test")
+    let edge = PatternSummary([fixAt], words: [(wk.addingTimeInterval(5 * 60), 400)], now: at1245)
+    let fixWeek = edge.rows.first?.weeks.firstIndex { $0 > 0 }, wordWeek = edge.words.firstIndex { $0 > 0 }
+    check("words and fixes from one sitting land in the same week", fixWeek != nil && fixWeek == wordWeek)
     print(failed == 0 ? "rate checks: all pass" : "rate checks: \(failed) failed")
     if failed > 0 { exit(1) }
 }

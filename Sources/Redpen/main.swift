@@ -22,10 +22,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
         Private.lockFolder()
         Mistakes.shared.trim()
         // The words-written counts are saved every five minutes and on quit; saving also drops counts past 90 days.
-        // Saving waits on a lock another copy of Redpen may hold, so it never runs on the main thread.
-        let saveWords = { DispatchQueue.global(qos: .utility).async { WordLog.shared.save() } }
-        saveWords()
-        Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { _ in saveWords() }
+        // Saving waits on a lock another copy of Redpen may hold, so it runs in the background, one save at a time.
+        WordLog.shared.saveSoon()
+        Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { _ in WordLog.shared.saveSoon() }
         if let i = CommandLine.arguments.firstIndex(of: "--render-panel"), i + 1 < CommandLine.arguments.count {
             MenuPanel.render(host: self, to: CommandLine.arguments[i + 1])
             exit(0)
@@ -216,7 +215,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
 
     @objc func quit() { NSApp.terminate(nil) }
 
-    func applicationWillTerminate(_ n: Notification) { GrammarEngine.shared.stop(); WordLog.shared.save() }
+    func applicationWillTerminate(_ n: Notification) { GrammarEngine.shared.stop(); WordLog.shared.saveAndWait() }
 }
 
 MainActor.assumeIsolated {

@@ -20,6 +20,10 @@ final class Watcher {
     private var lastText = ""
     /// Words the writer adds to the field in view, for "Your patterns" per 1,000 words. Numbers only.
     private var growth = WordGrowth()
+    /// When the writer last pressed a key anywhere (the time only, never the key). Text that grows without a key
+    /// press, such as a template or a quoted reply an app adds, isn't counted as words written.
+    private var lastKeyAt = Date.distantPast
+    private var keyMonitor: Any?
     private var lastChange = Date.distantPast
     private var lastQuickAt = Date.distantPast
     private var quickIssues: [Issue] = []         // absolute ranges
@@ -57,6 +61,10 @@ final class Watcher {
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] _ in
             let p = NSEvent.mouseLocation
             MainActor.assumeIsolated { self?.click(at: p) }
+        }
+        keyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] e in
+            guard e.cgEvent?.getIntegerValueField(.eventSourceUserData) != Paste.marker else { return }  // Redpen's own keys
+            MainActor.assumeIsolated { self?.lastKeyAt = Date() }
         }
         terminal.start()
     }
@@ -207,13 +215,15 @@ final class Watcher {
             elementPid = app.processIdentifier
             bundleID = bid
             growth.reset()
+            _ = growth.added(text)  // the field's text when Redpen arrives is the starting point, even when empty
         }
 
         let now = Date()
         if text != lastText {
             lastText = text
             lastChange = now
-            WordLog.shared.add(growth.added(text))
+            let added = growth.added(text)
+            if now.timeIntervalSince(lastKeyAt) < 2 { WordLog.shared.add(added) }
         }
         // Spelling and rules: as soon as typing slows, without waiting for a full pause.
         if lastQuickAt < lastChange && now.timeIntervalSince(lastChange) > 0.3 {
@@ -798,10 +808,10 @@ final class Watcher {
 
     /// True when the field still reads `field` and its selection is exactly `range`, holding the checked text.
     private func selectionHolds(_ target: DeepTarget, _ range: NSRange, field: String) -> Bool {
-        guard let now: String = AX.attr(target.el, kAXValueAttribute), now == field,
+        guard let now: String = AX.attr(target.el, kAXValueAttribute), now.utf16.elementsEqual(field.utf16),
               let sel = AX.range(target.el, kAXSelectedTextRangeAttribute), sel == range else { return false }
         let selText: String? = AX.attr(target.el, kAXSelectedTextAttribute)
-        return selText == nil || selText == target.text
+        return selText.map { $0.utf16.elementsEqual(target.text.utf16) } ?? true
     }
 
     enum ReplaceResult {
@@ -831,7 +841,7 @@ final class Watcher {
             return .refused("The selection moved before Redpen could write. Nothing was changed. Press Replace again.")
         }
         if AX.set(target.el, kAXSelectedTextAttribute, revised as CFString),
-           let after: String = AX.attr(target.el, kAXValueAttribute), after == expected {
+           let after: String = AX.attr(target.el, kAXValueAttribute), after.utf16.elementsEqual(expected.utf16) {
             Log.note("deep check: replaced \((target.text as NSString).length) chars in \(target.app)")
             lastText = ""
             growth.reset()  // Redpen's own rewrite isn't words the writer wrote
@@ -839,17 +849,20 @@ final class Watcher {
         }
         // Apps that ignore direct writes get a paste over the selection, only into the field that is in focus now.
         // Re-check first: a failed direct write must not have changed anything.
-        guard let now: String = AX.attr(target.el, kAXValueAttribute), now == current else {
+        guard let now: String = AX.attr(target.el, kAXValueAttribute), now.utf16.elementsEqual(current.utf16) else {
             return .refused("\(target.app) changed the text in an unexpected way. Press \u{2318}Z there to undo, then use Copy revised text.")
         }
         guard NSRunningApplication(processIdentifier: target.pid)?.isActive == true, stillFocused(target.el) else {
             return .refused("Click back into the text in \(target.app), then press Replace again.")
         }
-        // A paste lands wherever the selection is, so check it once more just before.
-        guard AX.setRange(target.el, range), selectionHolds(target, range, field: current) else {
-            return .refused("The selection moved before Redpen could paste. Nothing was changed. Press Replace again.")
+        guard AX.setRange(target.el, range) else { return .refused("\(target.app) didn\u{2019}t let Redpen select the text. Use Copy revised text.") }
+        // A paste lands wherever focus and the selection are when Cmd+V goes out, so everything is checked again
+        // after the clipboard is ready, right before the key is sent.
+        let pasted = Paste.replaceSelection(with: revised) { [self] in
+            NSRunningApplication(processIdentifier: target.pid)?.isActive == true && stillFocused(target.el)
+                && selectionHolds(target, range, field: current)
         }
-        Paste.replaceSelection(with: revised)
+        guard pasted else { return .refused("Focus or the selection moved before Redpen could paste. Nothing was changed. Press Replace again.") }
         Log.note("deep check: pasted over \((target.text as NSString).length) chars in \(target.app)")
         lastText = ""
         growth.reset()
@@ -865,8 +878,11 @@ enum Paste {
     @MainActor private static var saved: [NSPasteboardItem]?
     @MainActor private static var ours = -1
 
+    /// `ready`, if given, is asked once the clipboard is set, right before Cmd+V. If it says no, nothing is pasted,
+    /// the writer's clipboard is put back, and this returns false.
     @MainActor
-    static func replaceSelection(with s: String) {
+    @discardableResult
+    static func replaceSelection(with s: String, ready: (() -> Bool)? = nil) -> Bool {
         let pb = NSPasteboard.general
         // Snapshot only when the clipboard is the writer's. During back-to-back pastes it still holds Redpen's
         // previous fix, and the writer's original snapshot is kept instead.
@@ -882,6 +898,12 @@ enum Paste {
         pb.setString(s, forType: .string)
         ours = pb.changeCount
         let mine = ours
+        if let ready, !ready() {
+            if let items = saved { pb.clearContents(); if !items.isEmpty { pb.writeObjects(items) } }
+            saved = nil
+            ours = -1
+            return false
+        }
         key(9, flags: .maskCommand)  // V
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             // A newer paste will restore later; and if the writer copied something new meanwhile, leave it.
@@ -890,6 +912,7 @@ enum Paste {
             if !items.isEmpty { pb.writeObjects(items) }
             saved = nil
         }
+        return true
     }
 
     static func key(_ code: CGKeyCode, flags: CGEventFlags = []) {

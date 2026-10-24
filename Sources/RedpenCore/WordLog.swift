@@ -8,48 +8,70 @@ public final class WordLog: @unchecked Sendable {
     let url: URL
     private let lock = NSLock()
     private var pending: [Int: Int] = [:]   // hour (seconds since 1970 / 3600) to words, not yet saved
+    private var saving: [Int: Int] = [:]    // being written now; still counted by `all()` until it is on disk
+    /// Saves run one at a time, in order, off the main thread.
+    private let queue = DispatchQueue(label: "redpen.wordlog.save", qos: .utility)
 
     public init(url: URL) { self.url = url }
 
-    /// Adds words written at `date`. They are kept in memory until `save()`.
+    /// Adds words written at `date`. They are kept in memory until saved.
     public func add(_ words: Int, at date: Date = Date()) {
         guard words > 0 else { return }
         lock.withLock { pending[Self.hour(date), default: 0] += words }
     }
+
+    /// Saves in the background. Saves queue up behind each other, so none is lost to another.
+    public func saveSoon() { queue.async { self.save() } }
+
+    /// Saves now and waits for any save already queued, for quitting.
+    public func saveAndWait() { queue.sync { self.save() } }
 
     /// Writes what was added since the last save, merged with what other copies of Redpen saved, and drops
     /// anything older than `keepDays`. Nothing is lost if another copy saves at the same moment. Never waits more
     /// than about a second for another copy's lock; when it can't save, the counts stay in memory for next time.
     @discardableResult
     public func save(keepDays: Int = 90, now: Date = Date()) -> Bool {
-        let add = lock.withLock { () -> [Int: Int] in defer { pending = [:] }; return pending }
-        func keep() { lock.withLock { for (h, n) in add { pending[h, default: 0] += n } } }
         let oldest = Self.hour(now.addingTimeInterval(-Double(keepDays) * 86_400))
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let fd = open(url.path + ".lock", O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
-        guard fd >= 0 else { keep(); return false }
+        guard fd >= 0 else { return false }
         defer { close(fd) }
         var held = false
         for _ in 0..<20 {
             if flock(fd, LOCK_EX | LOCK_NB) == 0 { held = true; break }
             usleep(50_000)
         }
-        guard held else { keep(); return false }
+        guard held else { return false }
         defer { flock(fd, LOCK_UN) }
-        var hours = read()
-        for (h, n) in add { hours[h, default: 0] += n }
-        hours = hours.filter { $0.key >= oldest }
-        let file = Dictionary(uniqueKeysWithValues: hours.map { (String($0.key), $0.value) })
-        guard let data = try? JSONSerialization.data(withJSONObject: file, options: [.sortedKeys]),
-              (try? data.write(to: url, options: .atomic)) != nil else { keep(); return false }
-        Private.lock(url)
-        return true
+        // Holding this object's lock from the read to the write means `all()` sees each batch once: either
+        // waiting in memory or saved on disk, never both and never neither.
+        return lock.withLock {
+            saving = pending
+            pending = [:]
+            var hours = read()
+            for (h, n) in saving { hours[h, default: 0] += n }
+            hours = hours.filter { $0.key >= oldest }
+            let file = Dictionary(uniqueKeysWithValues: hours.map { (String($0.key), $0.value) })
+            guard let data = try? JSONSerialization.data(withJSONObject: file, options: [.sortedKeys]),
+                  (try? data.write(to: url, options: .atomic)) != nil else {
+                for (h, n) in saving { pending[h, default: 0] += n }
+                saving = [:]
+                return false
+            }
+            saving = [:]
+            Private.lock(url)
+            return true
+        }
     }
 
     /// Every saved hour plus what is waiting to be saved, as (start of the hour, words).
     public func all() -> [(date: Date, words: Int)] {
-        var hours = read()
-        lock.withLock { for (h, n) in pending { hours[h, default: 0] += n } }
+        var hours: [Int: Int] = [:]
+        lock.withLock {
+            hours = read()
+            for (h, n) in pending { hours[h, default: 0] += n }
+            for (h, n) in saving { hours[h, default: 0] += n }
+        }
         return hours.map { (Date(timeIntervalSince1970: Double($0.key) * 3600), $0.value) }
     }
 
@@ -76,11 +98,12 @@ public final class WordLog: @unchecked Sendable {
 
 /// Counts the words a writer adds to one field, from the moment Redpen starts reading it. Text already in the
 /// field (an old document, a quoted reply) is the starting point, not counted. Deleting and retyping counts the
-/// new words; deleting alone counts nothing. A jump of more than `maxStep` words at once (a paste, a draft or
-/// template loading, another document opening in the same field) isn't typing, so it becomes the new starting point.
+/// new words; deleting alone counts nothing. A jump of more than `maxStep` words at once (a long paste, another
+/// document opening in the same field) becomes the new starting point. The watcher counts growth only right
+/// after a key press, so text an app adds by itself (a template, a quoted reply) isn't counted either.
 public struct WordGrowth: Sendable {
     private var last: Int?
-    public static let maxStep = 40
+    public static let maxStep = 200
 
     public init() {}
 

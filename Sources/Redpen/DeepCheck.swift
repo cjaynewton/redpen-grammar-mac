@@ -23,6 +23,8 @@ final class DeepCheck {
     private var request = 0
     /// The revised text from the newest answer, if it had one.
     private var revised: String?
+    /// True when that answer has exactly the expected form, so the revised text can go back in safely.
+    private var replaceable = false
     /// Set once Replace has put an answer in, so a second press can't put it in twice.
     private var replaced = false
     /// The helper the newest request went to ("claude", "chatgpt", "gemini"), for the setup link and the test.
@@ -67,6 +69,7 @@ final class DeepCheck {
     /// in, an error) gets the setup buttons instead.
     private func answer(_ reply: String) {
         revised = DeepReplace.revised(from: reply)
+        replaceable = DeepReplace.wellFormed(reply)
         let limit = revised == nil ? DeepCheck.limitMessage(reply, who: Config.name(helper)) : nil
         show(limit.map { $0 + "\n\nDetails:\n" + reply } ?? reply)
         refreshButtons()
@@ -182,7 +185,7 @@ final class DeepCheck {
     /// Replace: brings the writer's app back to the front, then puts the revised text where the checked text was,
     /// only if that text is still there, unchanged.
     @objc private func replaceRevised() {
-        guard let target, let revised, let watcher, !replaced else { return }
+        guard let target, let revised, let watcher, !replaced, replaceable else { return }
         guard let app = NSRunningApplication(processIdentifier: target.pid), !app.isTerminated else {
             setNote("\(target.app) is no longer open. Use Copy revised text."); return
         }
@@ -206,8 +209,9 @@ final class DeepCheck {
     private func refreshButtons() {
         let answered = revised != nil
         copyButton?.isEnabled = answered
-        replaceButton?.isEnabled = answered && !replaced && (target?.whole ?? false)
-        replaceButton?.toolTip = target?.whole == false ? "This text was too long to send whole. Use Copy revised text."
+        replaceButton?.isEnabled = answered && replaceable && !replaced && (target?.whole ?? false)
+        replaceButton?.toolTip = target?.whole == false || (answered && !replaceable)
+            ? "Replace can\u{2019}t safely put this answer back. Use Copy revised text."
             : "Puts the revised text in place of the text you checked, only if that text hasn\u{2019}t changed."
         let page = Self.setupPage(helper)
         getButton?.title = page.title
@@ -405,6 +409,7 @@ final class DeepCheck {
             helper = who
             replaced = false
             revised = DeepReplace.revised(from: reply)
+            replaceable = DeepReplace.wellFormed(reply)
             show(reply)
             refreshButtons()
             setNote(n)
