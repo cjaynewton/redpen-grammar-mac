@@ -389,6 +389,13 @@ func safetyChecks() {
     check("retyped words count again", g.added("one two three") == 1)
     check("a pasted block isn't counted as writing", g.added("one two three " + String(repeating: "word ", count: 300)) == 0)
     check("typing after a paste counts from there", g.added("one two three " + String(repeating: "word ", count: 300) + "more") == 1)
+    check("letters count as typing", WordGrowth.isTyping(keyCode: 0, characters: "a", command: false, control: false))
+    check("space and Delete count as typing", WordGrowth.isTyping(keyCode: 49, characters: " ", command: false, control: false)
+          && WordGrowth.isTyping(keyCode: 51, characters: "\u{7F}", command: false, control: false))
+    check("a paste counts as typing", WordGrowth.isTyping(keyCode: 9, characters: "v", command: true, control: false))
+    check("arrows don't count as typing", !WordGrowth.isTyping(keyCode: 125, characters: "\u{F701}", command: false, control: false))
+    check("shortcuts don't count as typing", !WordGrowth.isTyping(keyCode: 31, characters: "o", command: true, control: false)
+          && !WordGrowth.isTyping(keyCode: 53, characters: "\u{1B}", command: false, control: false))
     g.reset()
     check("a new field starts from its own text", g.added("a b c d e f g h") == 0)
     let wURL = FileManager.default.temporaryDirectory.appendingPathComponent("redpen-words-\(UUID().uuidString).json")
@@ -661,6 +668,10 @@ func rateChecks() {
     let edge = PatternSummary([fixAt], words: [(wk.addingTimeInterval(5 * 60), 400)], now: at1245)
     let fixWeek = edge.rows.first?.weeks.firstIndex { $0 > 0 }, wordWeek = edge.words.firstIndex { $0 > 0 }
     check("words and fixes from one sitting land in the same week", fixWeek != nil && fixWeek == wordWeek)
+    // Terminal fixes show in the counts but not the rates, since Terminal writing isn't counted.
+    let term = MistakeRecord(date: now.addingTimeInterval(-day), lesson: "its-its", title: "its", original: "its", replacement: "it's", app: "com.apple.Terminal")
+    let withTerm = PatternSummary([term, term, term], words: words([1000]), uncounted: ["com.apple.Terminal"], now: now)
+    check("terminal fixes stay out of the rate", withTerm.thisWeek == 3 && withTerm.rateThisWeek == 0)
     print(failed == 0 ? "rate checks: all pass" : "rate checks: \(failed) failed")
     if failed > 0 { exit(1) }
 }

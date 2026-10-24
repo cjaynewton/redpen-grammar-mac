@@ -23,6 +23,7 @@ final class Watcher {
     /// When the writer last pressed a key anywhere (the time only, never the key). Text that grows without a key
     /// press, such as a template or a quoted reply an app adds, isn't counted as words written.
     private var lastKeyAt = Date.distantPast
+    private var lastKeyPid: pid_t = 0
     private var keyMonitor: Any?
     private var lastChange = Date.distantPast
     private var lastQuickAt = Date.distantPast
@@ -63,8 +64,12 @@ final class Watcher {
             MainActor.assumeIsolated { self?.click(at: p) }
         }
         keyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] e in
-            guard e.cgEvent?.getIntegerValueField(.eventSourceUserData) != Paste.marker else { return }  // Redpen's own keys
-            MainActor.assumeIsolated { self?.lastKeyAt = Date() }
+            guard e.cgEvent?.getIntegerValueField(.eventSourceUserData) != Paste.marker,  // Redpen's own keys
+                  WordGrowth.isTyping(keyCode: Int(e.keyCode), characters: e.charactersIgnoringModifiers ?? "",
+                                      command: e.modifierFlags.contains(.command), control: e.modifierFlags.contains(.control))
+            else { return }
+            let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier ?? 0
+            MainActor.assumeIsolated { self?.lastKeyAt = Date(); self?.lastKeyPid = pid }
         }
         terminal.start()
     }
@@ -223,7 +228,7 @@ final class Watcher {
             lastText = text
             lastChange = now
             let added = growth.added(text)
-            if now.timeIntervalSince(lastKeyAt) < 2 { WordLog.shared.add(added) }
+            if now.timeIntervalSince(lastKeyAt) < 2, lastKeyPid == elementPid { WordLog.shared.add(added) }
         }
         // Spelling and rules: as soon as typing slows, without waiting for a full pause.
         if lastQuickAt < lastChange && now.timeIntervalSince(lastChange) > 0.3 {
@@ -858,9 +863,11 @@ final class Watcher {
         guard AX.setRange(target.el, range) else { return .refused("\(target.app) didn\u{2019}t let Redpen select the text. Use Copy revised text.") }
         // A paste lands wherever focus and the selection are when Cmd+V goes out, so everything is checked again
         // after the clipboard is ready, right before the key is sent.
-        let pasted = Paste.replaceSelection(with: revised) { [self] in
-            NSRunningApplication(processIdentifier: target.pid)?.isActive == true && stillFocused(target.el)
-                && selectionHolds(target, range, field: current)
+        // The slow reads come first and the app in front is checked last, and Cmd+V goes to that app alone, so a
+        // switch to another app during the checks can't receive the paste.
+        let pasted = Paste.replaceSelection(with: revised, to: target.pid) { [self] in
+            selectionHolds(target, range, field: current) && stillFocused(target.el)
+                && NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid
         }
         guard pasted else { return .refused("Focus or the selection moved before Redpen could paste. Nothing was changed. Press Replace again.") }
         Log.note("deep check: pasted over \((target.text as NSString).length) chars in \(target.app)")
@@ -882,7 +889,8 @@ enum Paste {
     /// the writer's clipboard is put back, and this returns false.
     @MainActor
     @discardableResult
-    static func replaceSelection(with s: String, ready: (() -> Bool)? = nil) -> Bool {
+    /// `pid`, if given, receives Cmd+V directly instead of whichever app is in front.
+    static func replaceSelection(with s: String, to pid: pid_t? = nil, ready: (() -> Bool)? = nil) -> Bool {
         let pb = NSPasteboard.general
         // Snapshot only when the clipboard is the writer's. During back-to-back pastes it still holds Redpen's
         // previous fix, and the writer's original snapshot is kept instead.
@@ -899,12 +907,13 @@ enum Paste {
         ours = pb.changeCount
         let mine = ours
         if let ready, !ready() {
-            if let items = saved { pb.clearContents(); if !items.isEmpty { pb.writeObjects(items) } }
+            // Put the writer's clipboard back, unless they copied something new meanwhile.
+            if pb.changeCount == mine, let items = saved { pb.clearContents(); if !items.isEmpty { pb.writeObjects(items) } }
             saved = nil
             ours = -1
             return false
         }
-        key(9, flags: .maskCommand)  // V
+        key(9, flags: .maskCommand, to: pid)  // V
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             // A newer paste will restore later; and if the writer copied something new meanwhile, leave it.
             guard pb.changeCount == mine, ours == mine, let items = saved else { return }
@@ -915,13 +924,14 @@ enum Paste {
         return true
     }
 
-    static func key(_ code: CGKeyCode, flags: CGEventFlags = []) {
+    /// Sends a key press to the app in front, or to `pid` alone when given.
+    static func key(_ code: CGKeyCode, flags: CGEventFlags = [], to pid: pid_t? = nil) {
         let src = CGEventSource(stateID: .combinedSessionState)
         for down in [true, false] {
             guard let e = CGEvent(keyboardEventSource: src, virtualKey: code, keyDown: down) else { continue }
             e.flags = flags
             e.setIntegerValueField(.eventSourceUserData, value: marker)
-            e.post(tap: .cghidEventTap)
+            if let pid { e.postToPid(pid) } else { e.post(tap: .cghidEventTap) }
         }
     }
 

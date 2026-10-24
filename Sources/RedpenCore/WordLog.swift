@@ -116,6 +116,16 @@ public struct WordGrowth: Sendable {
         return step > Self.maxStep ? 0 : max(0, step)
     }
 
+    /// True for a key press that writes: a letter, number, punctuation, space, Return, Delete, or Cmd+V. Arrows,
+    /// function keys, Escape and other shortcuts move around or open things, so text appearing after them
+    /// (a document loading, a template) isn't counted as written.
+    public static func isTyping(keyCode: Int, characters: String, command: Bool, control: Bool) -> Bool {
+        if command || control { return command && !control && keyCode == 9 }  // Cmd+V, a paste (dictation apps paste)
+        if [36, 76, 48, 49, 51, 117].contains(keyCode) { return true }  // Return, Enter, Tab, Space, Delete, Forward Delete
+        guard let u = characters.unicodeScalars.first else { return false }
+        return !(0xF700...0xF8FF).contains(u.value) && u.value >= 0x20 && u.value != 0x7F  // not arrows or function keys
+    }
+
     /// Starts again from the next text seen, for a new field.
     public mutating func reset() { last = nil }
 }

@@ -38,7 +38,10 @@ public struct PatternSummary: Sendable, Equatable {
         return r == r.rounded() ? String(Int(r)) : String(format: "%.1f", r)
     }
 
-    public init(_ records: [MistakeRecord], words written: [(date: Date, words: Int)] = [], now: Date = Date()) {
+    /// `uncounted`: apps whose writing Redpen doesn't count (terminals). Their fixes show in the counts but stay
+    /// out of the rates, which would otherwise rise with fixes whose words were never counted.
+    public init(_ records: [MistakeRecord], words written: [(date: Date, words: Int)] = [], uncounted: Set<String> = [],
+                now: Date = Date()) {
         let day = 86_400.0
         // Words are saved by the hour, so fixes are placed by their hour too and weeks end at the end of this hour:
         // the words and fixes of one sitting always land in the same week.
@@ -57,7 +60,7 @@ public struct PatternSummary: Sendable, Equatable {
         self.words = words
         // Counting began at the first hour with words; a week that started before then is only partly counted.
         let start = written.filter { $0.words > 0 }.map(\.date).min()
-        func counted(_ r: MistakeRecord) -> Bool { start.map { r.date >= $0 } ?? false }
+        func counted(_ r: MistakeRecord) -> Bool { !uncounted.contains(r.app) && (start.map { r.date >= $0 } ?? false) }
         func rate(_ fixes: Int, _ n: Int) -> Double? { n >= Self.minWords ? Double(fixes) * 1000 / Double(n) : nil }
         rateThisWeek = rate(records.filter { week($0.date) == 7 && counted($0) }.count, words[7])
         rateLastWeek = rate(records.filter { week($0.date) == 6 && counted($0) }.count, words[6])

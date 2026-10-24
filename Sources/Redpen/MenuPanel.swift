@@ -67,7 +67,7 @@ final class PanelModel: ObservableObject {
         status = s.text; live = s.live
         canDeepCheck = host.canDeepCheck
         deepName = host.config.deepCheckWith == "auto" ? autoName() : host.config.deepCheckName
-        summary = PatternSummary(Mistakes.shared.all(), words: WordLog.shared.all())
+        summary = PatternSummary(Mistakes.shared.all(), words: WordLog.shared.all(), uncounted: Set(host.config.terminalApps))
         if Date().timeIntervalSince(helpersCheckedAt) > 300 { checkHelpers(claudePath: host.config.claudeExecutable) }
     }
 
@@ -155,7 +155,8 @@ enum Helpers {
     }
 
     /// Runs a helper with fixed arguments (never through a shell) and returns what it printed.
-    static func run(_ path: String, _ args: [String]) -> String {
+    /// Gives up after `limit` seconds and returns nothing, which reads as not set up.
+    static func run(_ path: String, _ args: [String], limit: TimeInterval = 20) -> String {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: path)
         p.arguments = args
@@ -165,11 +166,25 @@ enum Helpers {
         let out = Pipe()
         p.standardOutput = out
         p.standardError = out
+        let done = DispatchSemaphore(value: 0)
+        p.terminationHandler = { _ in done.signal() }
         do { try p.run() } catch { return "" }
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
-        return String(decoding: data, as: UTF8.self)
+        // Read in the background so a helper that stalls (a network or sign-in problem) can be given up on.
+        let box = OutputBox()
+        let reader = out.fileHandleForReading
+        DispatchQueue.global().async { box.set(reader.readDataToEndOfFile()) }
+        if done.wait(timeout: .now() + limit) == .timedOut { p.terminate(); return "" }
+        return String(decoding: box.wait(seconds: 2), as: UTF8.self)
     }
+}
+
+/// A helper's output, handed from the reading thread to the waiting one.
+private final class OutputBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+    private let ready = DispatchSemaphore(value: 0)
+    func set(_ d: Data) { lock.withLock { data = d }; ready.signal() }
+    func wait(seconds: Double) -> Data { _ = ready.wait(timeout: .now() + seconds); return lock.withLock { data } }
 }
 
 // MARK: - View
