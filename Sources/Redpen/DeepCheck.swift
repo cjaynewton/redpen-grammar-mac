@@ -66,7 +66,8 @@ final class DeepCheck {
     /// in, an error) gets the setup buttons instead.
     private func answer(_ reply: String) {
         revised = DeepReplace.revised(from: reply)
-        show(reply)
+        let limit = revised == nil ? DeepCheck.limitMessage(reply, who: Config.name(helper)) : nil
+        show(limit.map { $0 + "\n\nDetails:\n" + reply } ?? reply)
         refreshButtons()
     }
 
@@ -139,7 +140,19 @@ final class DeepCheck {
         if reply.count < 40, reply.localizedCaseInsensitiveContains("ok") {
             return (true, "\(who) answered in \(seconds) second\(seconds == 1 ? "" : "s").")
         }
+        if let limit = limitMessage(reply, who: who) { return (false, "\(tool) is set up. " + limit) }
         return (false, "\(tool) is installed and signed in, but the test question didn\u{2019}t get a normal answer:\n\n\(reply)")
+    }
+
+    /// A plain line when the reply says the writer's plan has hit its usage limit, with the reset time if given.
+    nonisolated static func limitMessage(_ reply: String, who: String) -> String? {
+        let l = reply.lowercased()
+        guard ["quota", "rate limit", "usage limit", "resource_exhausted", "limit reached", "(code 429)"].contains(where: l.contains) else { return nil }
+        var s = "Your \(who) plan has reached its limit for now, so Deep check has to wait."
+        if let r = reply.range(of: #"[Rr]esets in [0-9hms ]+"#, options: .regularExpression) {
+            s += " It " + reply[r].trimmingCharacters(in: .whitespaces).lowercased() + "."
+        }
+        return s
     }
 
     /// The sign-in step for each helper, in the words its own screen uses.

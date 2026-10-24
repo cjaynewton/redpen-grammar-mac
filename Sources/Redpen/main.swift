@@ -102,6 +102,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
             }
             exit(0)
         }
+        // Debug: Deep check's Test connection for one helper, printed. `--test-connection chatgpt`
+        if let i = CommandLine.arguments.firstIndex(of: "--test-connection"), i + 1 < CommandLine.arguments.count {
+            var c = watcher.config
+            c.deepCheckWith = CommandLine.arguments[i + 1]
+            c.deepCheckSpeed = "fast"
+            let r = DeepCheck.test(c)
+            print(r.ok ? "OK:" : "NOT READY:", r.text)
+            exit(0)
+        }
         // Debug: run a Deep check on a file and print the reply. `--deep email draft.txt`
         if let i = CommandLine.arguments.firstIndex(of: "--deep"), i + 2 < CommandLine.arguments.count,
            let mode = DeepMode(rawValue: CommandLine.arguments[i + 1]),
