@@ -21,9 +21,9 @@ Everything runs on your Mac. Your writing is never sent anywhere unless you choo
 - **Style tips** (optional): purple notes for writing that is correct but could be stronger, like filler words, claims with no source, slow starts and clichés. Each tip comes with examples and a note on when to leave it alone. All off until you switch them on in **Settings > Style tips**.
 - **Calm by default:** Redpen underlines only sure spelling and grammar mistakes. Switch **Underline** to **Everything** in the menu to also see your style rules and Apple's "maybe" suggestions.
 - **Spelling that reads the sentence:** with Apple Intelligence on, the first suggestion is the word the sentence needs. "I liked it, thougt it cost too much" offers *though*; "I thougt about it" offers *thought*. The choice is only ever one of the dictionary's own suggestions.
-- **Your patterns** (in the menu) shows which mistakes keep coming back this week, and whether each is going up or down. The record stays on your Mac, holds only the flagged words and the fix, never your surrounding text, and keeps the last 90 days.
+- **Your patterns** (in the menu) shows which mistakes keep coming back this week, and whether each is going up or down. It counts them per 1,000 words you wrote, so a week when you wrote less doesn't look like progress. The record stays on your Mac, holds only the flagged words, the fix and how many words you wrote each hour, never your surrounding text, and keeps the last 90 days.
 - **Terminal:** when you type a sentence (not a command) in Terminal, or another terminal that tells the Mac which pane has focus, a small bubble offers to fix it. Where a terminal doesn't say, Redpen stays quiet rather than risk fixing the wrong tab.
-- **Deep check** (optional): sends the paragraph you're in to Claude, ChatGPT or Gemini, using the plan you already pay for. Pick one in **Settings > Advanced**. It shows a cleaned-up version and a list of what changed. If the text is an email asking for something, it adds up to three tips to make it easier to say yes to. Switch to **Email** to have it rewritten that way.
+- **Deep check** (optional): sends the paragraph you're in to Claude, ChatGPT or Gemini, using the plan you already pay for. Pick one in **Settings > Advanced**. It shows a cleaned-up version and a list of what changed. If the text is an email asking for something, it adds up to three tips to make it easier to say yes to. Switch to **Email** to have it rewritten that way. Press **Replace** to put the new version in place of the paragraph you checked. If you changed that paragraph while Deep check was working, Replace stops and leaves your text alone; **Copy revised text** still works anywhere. If the AI isn't set up yet, the window links to its install page and has a **Test connection** button.
 
 <p align="center">
 <picture>
@@ -50,7 +50,7 @@ Click a mistake and you choose, in Settings, what the fix box shows:
 
 - Redpen checks your writing on your Mac. Nothing you type leaves it unless you use Deep check.
 - It never reads password boxes, password managers, or bank and payment websites. You can add more sites in the settings file.
-- Your settings, mistakes list and log are locked so only you can open them. The log lists app names and counts, never your words.
+- Your settings, mistakes list, word counts and log are locked so only you can open them. The log lists app names and counts, never your words. The word counts are numbers only.
 - Deep check sends only the paragraph you ask it to check, and only to the AI you picked. Redpen switches off that AI's extra tools first, so it can only read the text and reply.
 - Once a day Redpen asks GitHub whether there's a newer version. It sends nothing you wrote. You can turn this off in Settings.
 
@@ -141,6 +141,7 @@ export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
 ./build.sh                     # build and install the app
 swift run redpen-test          # built-in test sentences
 swift run redpen-test --blind  # also --held-out, --blind2, --blind-file <tsv>, --patterns
+swift run redpen-test --safety # also --rates, --card, --tips-check, --cleanup
 ```
 
 To test Redpen on your own writing, put one finished paragraph per line in a file as `clean<TAB>paragraph<TAB>` and run `swift run redpen-test --blind-file yourfile.tsv`. Any flag on edited writing is likely a false alarm. The published-writing test above isn't included, because it uses someone's own articles.

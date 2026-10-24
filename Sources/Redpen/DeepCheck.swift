@@ -8,23 +8,41 @@ import RedpenCore
 final class DeepCheck {
     private var window: NSWindow?
     private var textView: NSTextView?
+    private var note: NSTextField?
+    private var replaceButton: NSButton?
+    private var copyButton: NSButton?
+    private var setupRow: NSStackView?
+    private var getButton: NSButton?
+    private var testButton: NSButton?
 
-    private var lastText: String?
+    private var target: Watcher.DeepTarget?
+    private weak var watcher: Watcher?
     private var lastConfig: Config?
     private var mode: DeepMode = .fixOnly
     private var modePicker: NSSegmentedControl?
     private var request = 0
+    /// The revised text from the newest answer, if it had one.
+    private var revised: String?
+    /// Set once Replace has put an answer in, so a second press can't put it in twice.
+    private var replaced = false
+    /// The helper the newest request went to ("claude", "chatgpt", "gemini"), for the setup link and the test.
+    private var helper = "claude"
 
-    func run(text: String, config: Config) {
-        lastText = text
+    func run(target: Watcher.DeepTarget, config: Config, watcher: Watcher) {
+        self.target = target
+        self.watcher = watcher
         lastConfig = config
+        replaced = false
         ask()
     }
 
-    private func ask() {
-        guard let text = lastText, let config = lastConfig else { return }
+    /// `note`: a line to show above the answer while it comes, such as "Connected." after Test connection.
+    private func ask(note: String = "") {
+        guard let text = target?.text, let config = lastConfig else { return }
         let name = config.deepCheckWith == "auto" ? "your AI" : config.deepCheckName
+        revised = nil
         show(mode == .email ? "Asking \(name) to rewrite this as an email\u{2026}" : "Asking \(name)\u{2026}")
+        setNote(note)
         let prompt = DeepPrompt.build(config.houseStyle, mode: mode)
         // Only the newest request may fill the window; an older one finishing late is dropped.
         request += 1
@@ -34,19 +52,157 @@ final class DeepCheck {
             // On Automatic, finding who is signed in starts helper programs, so it happens here, off the main thread.
             var c = config
             c.deepCheckWith = config.resolvedDeepWith()
-            let who = Config.name(c.deepCheckWith), company = Config.company(c.deepCheckWith)
+            let who = Config.name(c.deepCheckWith), company = Config.company(c.deepCheckWith), helper = c.deepCheckWith
             // Say where the text is going before it goes.
             let asking = (email ? "Asking \(who) to rewrite this as an email\u{2026}" : "Asking \(who)\u{2026}")
                 + "\n\nDeep check sends this text to \(company), through your \(who) plan. Nothing else Redpen does leaves your Mac."
-            await MainActor.run { if id == self.request { self.show(asking) } }
+            await MainActor.run { if id == self.request { self.helper = helper; self.show(asking) } }
             let result = DeepCheck.call(DeepCheck.job(c, prompt: prompt, input: text))
-            await MainActor.run { if id == self.request { self.show(result) } }
+            await MainActor.run { if id == self.request { self.answer(result) } }
         }
+    }
+
+    /// Shows a reply. One with revised text can be copied or put back; anything else (not installed, not signed
+    /// in, an error) gets the setup buttons instead.
+    private func answer(_ reply: String) {
+        revised = DeepReplace.revised(from: reply)
+        show(reply)
+        refreshButtons()
     }
 
     @objc private func modeChanged(_ sender: NSSegmentedControl) {
         mode = sender.selectedSegment == 1 ? .email : .fixOnly
         ask()
+    }
+
+    // MARK: Setup
+
+    /// Where to get each helper: the official install page of the company that makes it.
+    nonisolated static func setupPage(_ helper: String) -> (title: String, url: URL) {
+        switch helper {
+        case "chatgpt": ("Get Codex", URL(string: "https://developers.openai.com/codex/cli")!)
+        case "gemini": ("Get Antigravity CLI", URL(string: "https://antigravity.google/docs/getting-started?tab=cli")!)
+        default: ("Get Claude Code", URL(string: "https://code.claude.com/docs/en/setup")!)
+        }
+    }
+
+    @objc private func openSetupPage() { NSWorkspace.shared.open(Self.setupPage(helper).url) }
+
+    /// Test connection: is the helper installed, is it signed in, and does it answer a one-word question?
+    /// On success, the text is checked straight away.
+    @objc private func testConnection() {
+        guard var c = lastConfig else { return }
+        c.deepCheckWith = helper
+        let who = Config.name(helper)
+        request += 1
+        let id = request
+        revised = nil
+        show("Testing the connection to \(who)\u{2026}")
+        setNote("")
+        testButton?.isEnabled = false
+        Task.detached {
+            let message = DeepCheck.test(c)
+            await MainActor.run {
+                guard id == self.request else { return }
+                self.testButton?.isEnabled = true
+                if message.ok, self.target != nil {
+                    self.ask(note: "Connected. \(message.text)")
+                } else {
+                    self.show(message.text)
+                    self.refreshButtons()
+                }
+            }
+        }
+    }
+
+    /// The three steps of Test connection, each with a plain answer. Runs helper programs, so never on the main thread.
+    nonisolated static func test(_ c: Config) -> (ok: Bool, text: String) {
+        let job = DeepCheck.job(c, prompt: "Reply with only the word OK.", input: "OK")
+        let who = job.name, tool = job.tool
+        guard let path = job.path, FileManager.default.isExecutableFile(atPath: path) else {
+            try? FileManager.default.removeItem(at: job.folder)
+            return (false, "\(tool) isn\u{2019}t installed yet.\n\n" + job.missing)
+        }
+        let state: HelperRow.State
+        switch c.deepCheckWith {
+        case "chatgpt": state = Helpers.codex()
+        case "gemini": state = Helpers.gemini()
+        default: state = Helpers.claude(path: path)
+        }
+        if case .notSetUp = state {
+            try? FileManager.default.removeItem(at: job.folder)
+            return (false, "\(tool) is installed but not signed in.\n\n" + signIn(c.deepCheckWith) + "\n\nThen press Test connection again.")
+        }
+        let started = Date()
+        let reply = call(job, limit: 90)
+        let seconds = max(1, Int(Date().timeIntervalSince(started).rounded()))
+        if reply.count < 40, reply.localizedCaseInsensitiveContains("ok") {
+            return (true, "\(who) answered in \(seconds) second\(seconds == 1 ? "" : "s").")
+        }
+        return (false, "\(tool) is installed and signed in, but the test question didn\u{2019}t get a normal answer:\n\n\(reply)")
+    }
+
+    /// The sign-in step for each helper, in the words its own screen uses.
+    nonisolated static func signIn(_ helper: String) -> String {
+        switch helper {
+        case "chatgpt": "Open Terminal, type codex and press Return, then choose Sign in with ChatGPT."
+        case "gemini": "Open Terminal, type agy and press Return, then sign in with your Google account."
+        default: "Open Terminal, type claude and press Return, then sign in with your Claude account."
+        }
+    }
+
+    /// The message when a helper isn't installed: what it is, the three steps, and the other choices.
+    nonisolated static func missing(_ helper: String) -> String {
+        let (who, tool, maker) = helper == "chatgpt" ? ("ChatGPT", "Codex", "OpenAI")
+            : helper == "gemini" ? ("Gemini", "the Antigravity CLI", "Google") : ("Claude", "Claude Code", "Anthropic")
+        let button = setupPage(helper).title
+        return "Deep check with \(who) needs \(tool), \(maker)\u{2019}s command-line tool, signed in with your \(who) plan.\n\n"
+            + "1. Press \(button) and follow the install steps.\n"
+            + "2. \(signIn(helper))\n"
+            + "3. Come back here and press Test connection.\n\n"
+            + "Would you rather use a different AI? Choose it in Redpen\u{2019}s Settings, under Advanced."
+    }
+
+    // MARK: Replace
+
+    /// Replace: brings the writer's app back to the front, then puts the revised text where the checked text was,
+    /// only if that text is still there, unchanged.
+    @objc private func replaceRevised() {
+        guard let target, let revised, let watcher, !replaced else { return }
+        guard let app = NSRunningApplication(processIdentifier: target.pid), !app.isTerminated else {
+            setNote("\(target.app) is no longer open. Use Copy revised text."); return
+        }
+        replaceButton?.isEnabled = false
+        app.activate()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self else { return }
+            switch watcher.replace(target, with: revised) {
+            case .done:
+                self.replaced = true
+                self.setNote("Replaced in \(target.app). Press \u{2318}Z there to undo.")
+            case .refused(let why):
+                self.setNote(why)
+                NSApp.activate(ignoringOtherApps: true)
+                self.window?.makeKeyAndOrderFront(nil)
+            }
+            self.refreshButtons()
+        }
+    }
+
+    private func refreshButtons() {
+        let answered = revised != nil
+        copyButton?.isEnabled = answered
+        replaceButton?.isEnabled = answered && !replaced && (target?.whole ?? false)
+        replaceButton?.toolTip = target?.whole == false ? "This text was too long to send whole. Use Copy revised text."
+            : "Puts the revised text in place of the text you checked, only if that text hasn\u{2019}t changed."
+        let page = Self.setupPage(helper)
+        getButton?.title = page.title
+        setupRow?.isHidden = answered
+    }
+
+    private func setNote(_ s: String) {
+        note?.stringValue = s
+        note?.isHidden = s.isEmpty
     }
 
     /// One run of a helper program: what to start, with which arguments and input, and where its answer lands.
@@ -90,7 +246,7 @@ final class DeepCheck {
         case "chatgpt":
             let answer = folder.appendingPathComponent("answer.txt")
             return Job(name: "ChatGPT", tool: "Codex", path: c.codexExecutable,
-                       missing: "Deep check with ChatGPT needs Codex. Install it, then sign in with your ChatGPT account.",
+                       missing: missing("chatgpt"),
                        args: ["exec", "--skip-git-repo-check", "--ephemeral", "--ignore-user-config", "--ignore-rules",
                               "-s", "read-only", "-C", folder.path, "--color", "never",
                               "-c", "model_reasoning_effort=\"\(c.deepCheckSpeed == "fast" ? "low" : "high")\"",
@@ -99,14 +255,14 @@ final class DeepCheck {
                        input: input, answerFile: answer, folder: folder)
         case "gemini":
             return Job(name: "Gemini", tool: "Antigravity CLI", path: c.geminiExecutable,
-                       missing: "Deep check with Gemini needs Google\u{2019}s Antigravity CLI. Install it, run agy once and sign in with your Google account.",
+                       missing: missing("gemini"),
                        args: ["-p", prompt + "\n\n<stdin>\n" + input + "\n</stdin>", "--output-format", "text",
                               "--sandbox", "--disable-slash-commands",
                               "--effort", c.deepCheckSpeed == "fast" ? "low" : "high"],
                        input: nil, answerFile: nil, folder: folder)
         default:
             return Job(name: "Claude", tool: "Claude Code", path: c.claudeExecutable,
-                       missing: "Deep check with Claude needs Claude Code. Install it, then sign in with your Claude account.",
+                       missing: missing("claude"),
                        args: ["-p", prompt, "--model", c.claudeModel, "--output-format", "text",
                               "--tools", "", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence",
                               "--settings", #"{"disableAllHooks":true}"#],
@@ -162,7 +318,7 @@ final class DeepCheck {
 
     private func show(_ s: String) {
         if window == nil {
-            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 560),
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 580),
                              styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
             w.title = "Redpen Grammar \u{00B7} Deep check"
             w.isReleasedWhenClosed = false
@@ -170,42 +326,89 @@ final class DeepCheck {
                                             target: self, action: #selector(modeChanged(_:)))
             picker.selectedSegment = mode == .email ? 1 : 0
             picker.toolTip = "Email rewrites the text as an email: the ask up top, one ask, easy to answer."
+            let replace = NSButton(title: "Replace", target: self, action: #selector(replaceRevised))
+            replace.bezelStyle = .push
             let copy = NSButton(title: "Copy revised text", target: self, action: #selector(copyRevised))
             copy.bezelStyle = .push
-            let bar = NSStackView(views: [picker, NSView(), copy])
+            let bar = NSStackView(views: [picker, NSView(), copy, replace])
             bar.orientation = .horizontal
-            bar.edgeInsets = NSEdgeInsets(top: 10, left: 16, bottom: 10, right: 16)
+            bar.edgeInsets = NSEdgeInsets(top: 10, left: 16, bottom: 6, right: 16)
+
+            let get = NSButton(title: Self.setupPage(helper).title, target: self, action: #selector(openSetupPage))
+            get.bezelStyle = .push
+            let test = NSButton(title: "Test connection", target: self, action: #selector(testConnection))
+            test.bezelStyle = .push
+            let setup = NSStackView(views: [get, test, NSView()])
+            setup.orientation = .horizontal
+            setup.edgeInsets = NSEdgeInsets(top: 0, left: 16, bottom: 6, right: 16)
+            setup.isHidden = true
+
+            let n = NSTextField(wrappingLabelWithString: "")
+            n.font = .systemFont(ofSize: 13, weight: .medium)
+            n.isHidden = true
+            let noteRow = NSStackView(views: [n])
+            noteRow.edgeInsets = NSEdgeInsets(top: 0, left: 16, bottom: 6, right: 16)
+
             let scroll = NSTextView.scrollableTextView()
             let tv = scroll.documentView as! NSTextView
             tv.isEditable = false
             tv.font = .systemFont(ofSize: 14)
             tv.textContainerInset = NSSize(width: 16, height: 12)
-            let stack = NSStackView(views: [bar, scroll])
+            let stack = NSStackView(views: [bar, setup, noteRow, scroll])
             stack.orientation = .vertical
             stack.spacing = 0
             stack.alignment = .leading
-            bar.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-            scroll.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+            for v in [bar, setup, noteRow, scroll] { v.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
             w.contentView = stack
             window = w
             textView = tv
             modePicker = picker
+            replaceButton = replace
+            copyButton = copy
+            getButton = get
+            testButton = test
+            setupRow = setup
+            note = n
             w.center()
         }
         textView?.string = s
+        refreshButtons()
+        setupRow?.isHidden = true
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
     }
 
-    @objc private func copyRevised() {
-        let s = textView?.string ?? ""
-        var revised = s
-        if let r = s.range(of: "REVISED") {
-            revised = String(s[r.upperBound...])
-            if let c = revised.range(of: "\nCHANGES") { revised = String(revised[..<c.lowerBound]) }
+    /// Test render (`Redpen --render-deep prefix`): the window with an answer, after Replace refused, and with a
+    /// helper that isn't installed, saved as PNGs.
+    func render(to prefix: String) {
+        let sample = "REVISED\nThey're going home now.\n\nCHANGES\n- Their to They're (they are)."
+        let states: [(String, String, String, String)] = [
+            ("answer", sample, "claude", ""),
+            ("refused", sample, "claude", "The text changed while Deep check was running, so Replace stopped to keep your edits. Run Deep check again, or use Copy revised text."),
+            ("missing", DeepCheck.missing("chatgpt"), "chatgpt", ""),
+        ]
+        for (name, reply, who, n) in states {
+            helper = who
+            replaced = false
+            revised = DeepReplace.revised(from: reply)
+            show(reply)
+            refreshButtons()
+            setNote(n)
+            window?.appearance = NSAppearance(named: .aqua)
+            window?.setFrameOrigin(NSPoint(x: -4000, y: -4000))
+            RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+            window?.contentView?.layoutSubtreeIfNeeded()
+            window?.displayIfNeeded()
+            guard let v = window?.contentView, let rep = v.bitmapImageRepForCachingDisplay(in: v.bounds) else { continue }
+            v.cacheDisplay(in: v.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "\(prefix)-\(name).png"))
         }
+    }
+
+    @objc private func copyRevised() {
+        guard let s = revised else { return }
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(revised.trimmingCharacters(in: .whitespacesAndNewlines), forType: .string)
+        NSPasteboard.general.setString(s.trimmingCharacters(in: .whitespacesAndNewlines), forType: .string)
     }
 }
 

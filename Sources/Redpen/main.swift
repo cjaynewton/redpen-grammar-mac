@@ -11,7 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
     private let deep = DeepCheck()
     private var panel: MenuPanel!
     private let welcome = WelcomeWindow()
-    private var lastDeepText: String?
+    private var lastDeepTarget: Watcher.DeepTarget?
     private var hotKey: HotKey?
     private var fixAllKey: HotKey?
     private var cleanUpKey: HotKey?
@@ -21,12 +21,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
         watcher = Watcher(config: Config.load())
         Private.lockFolder()
         Mistakes.shared.trim()
+        // The words-written counts are saved every five minutes and on quit; saving also drops counts past 90 days.
+        WordLog.shared.save()
+        Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { _ in WordLog.shared.save() }
         if let i = CommandLine.arguments.firstIndex(of: "--render-panel"), i + 1 < CommandLine.arguments.count {
             MenuPanel.render(host: self, to: CommandLine.arguments[i + 1])
             exit(0)
         }
         if let i = CommandLine.arguments.firstIndex(of: "--render-settings"), i + 1 < CommandLine.arguments.count {
             MenuPanel.render(host: self, to: CommandLine.arguments[i + 1], pages: [.settings, .fixBox, .advanced, .styleTips, .about])
+            exit(0)
+        }
+        if let i = CommandLine.arguments.firstIndex(of: "--render-deep"), i + 1 < CommandLine.arguments.count {
+            deep.render(to: CommandLine.arguments[i + 1])
             exit(0)
         }
         if let i = CommandLine.arguments.firstIndex(of: "--render-card"), i + 1 < CommandLine.arguments.count {
@@ -163,7 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
     @objc private func statusClicked() {
         guard let button = status.button else { return }
         // The focused field must be read before the panel takes focus away.
-        if !panel.isShown { lastDeepText = watcher.textForDeepCheck() }
+        if !panel.isShown { lastDeepTarget = watcher.targetForDeepCheck() }
         watcher.panel.hide()  // the fix card and its keys never stay open behind Redpen's menu
         panel.toggle(from: button)
     }
@@ -178,7 +185,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
         }
     }
     func statusLine() -> (text: String, live: Bool) { watcher.statusLine() }
-    var canDeepCheck: Bool { lastDeepText != nil }
+    var canDeepCheck: Bool { lastDeepTarget != nil }
     func allowAccessibility() { showWelcome() }
     /// Waits for the app you were typing in to take focus back, then opens the card at its cursor.
     func fixAllAtCursor() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.watcher.fixAllAtCursor() } }
@@ -186,8 +193,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
     func fixAtCursor() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.watcher.openNearest() } }
 
     @objc func deepCheck() {
-        guard let t = lastDeepText else { return }
-        deep.run(text: t, config: watcher.config)
+        guard let t = lastDeepTarget else { return }
+        deep.run(target: t, config: watcher.config, watcher: watcher)
     }
 
     @objc func showWelcome() { welcome.show() }
@@ -198,7 +205,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
 
     @objc func quit() { NSApp.terminate(nil) }
 
-    func applicationWillTerminate(_ n: Notification) { GrammarEngine.shared.stop() }
+    func applicationWillTerminate(_ n: Notification) { GrammarEngine.shared.stop(); WordLog.shared.save() }
 }
 
 MainActor.assumeIsolated {

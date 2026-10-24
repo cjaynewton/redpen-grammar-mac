@@ -339,6 +339,59 @@ func safetyChecks() {
     try? FileManager.default.removeItem(at: mURL)
     try? FileManager.default.removeItem(atPath: mURL.path + ".lock")
 
+    // Deep check Replace: only ever where the checked text still sits, unchanged.
+    let rPara = "Their going home now."
+    let rDoc = "Dear Sam,\n\n\(rPara)\n\nThanks"
+    let at = (rDoc as NSString).range(of: rPara)
+    check("replace finds unchanged text in place", DeepReplace.locate(rPara, was: at, in: rDoc) == .at(at))
+    let typedAbove = "Hi again.\n" + rDoc
+    check("replace follows text moved by typing above it",
+          DeepReplace.locate(rPara, was: at, in: typedAbove) == .at((typedAbove as NSString).range(of: rPara)))
+    check("replace refuses text edited during the check",
+          DeepReplace.locate(rPara, was: at, in: rDoc.replacingOccurrences(of: "now", with: "soon")) == .changed)
+    check("replace refuses a one-letter edit", DeepReplace.locate(rPara, was: at, in: rDoc.replacingOccurrences(of: "home", with: "hone")) == .changed)
+    let rTwice = "\(rPara)\n\nX\n\n\(rPara)"
+    check("replace refuses when moved text appears twice", DeepReplace.locate(rPara, was: NSRange(location: 3, length: (rPara as NSString).length), in: rTwice) == .ambiguous)
+    check("replace uses the old place even if a copy exists elsewhere",
+          DeepReplace.locate(rPara, was: NSRange(location: 0, length: (rPara as NSString).length), in: rTwice) == .at(NSRange(location: 0, length: (rPara as NSString).length)))
+    check("replace refuses empty text", DeepReplace.locate("", was: NSRange(location: 0, length: 0), in: rDoc) == .changed)
+    check("replace refuses a deleted field", DeepReplace.locate(rPara, was: at, in: "") == .changed)
+    let padded = "  \(rPara)\n"
+    check("checked range leaves out spaces and the line break",
+          (padded as NSString).substring(with: DeepReplace.trimmed(NSRange(location: 0, length: (padded as NSString).length), in: padded)) == rPara)
+    check("revised text is read from the reply",
+          DeepReplace.revised(from: "REVISED\nThey're going home now.\n\nCHANGES\n- their to they're\n\nNOTES\n- none") == "They're going home now.")
+    check("revised text stops at NOTES when there is no CHANGES",
+          DeepReplace.revised(from: "REVISED\nFine.\n\nNOTES\n- Ask for a date.") == "Fine.")
+    check("REVISED inside a sentence is not a heading", DeepReplace.revised(from: "I REVISED it.\nCHANGES\n- x") == nil)
+    check("an error reply has no revised text", DeepReplace.revised(from: "Claude Code returned an error (exit 1).") == nil)
+    check("revised keeps its paragraph breaks", DeepReplace.revised(from: "REVISED\nOne.\n\nTwo.\n\nCHANGES\n- x") == "One.\n\nTwo.")
+
+    // Words written, for patterns per 1,000 words: only what the writer adds, never text already there.
+    check("word count", WordLog.count("It's a well-known fact - 42 times, isn't it?") == 8)
+    var g = WordGrowth()
+    check("text already in a field isn't counted", g.added("one two three four five") == 0)
+    check("typed words are counted", g.added("one two three four five six seven") == 2)
+    check("deleting counts nothing", g.added("one two") == 0)
+    check("retyped words count again", g.added("one two three") == 1)
+    g.reset()
+    check("a new field starts from its own text", g.added("a b c d e f g h") == 0)
+    let wURL = FileManager.default.temporaryDirectory.appendingPathComponent("redpen-words-\(UUID().uuidString).json")
+    let wl = WordLog(url: wURL), wNow = Date()
+    wl.add(120, at: wNow); wl.add(30, at: wNow); wl.add(500, at: wNow.addingTimeInterval(-100 * 86_400))
+    wl.save(now: wNow)
+    let saved = WordLog(url: wURL).all()
+    check("word counts are saved, old ones dropped", saved.count == 1 && saved[0].words == 150)
+    let other = WordLog(url: wURL)
+    other.add(10, at: wNow); other.save(now: wNow)
+    check("two copies saving add up", WordLog(url: wURL).all().first?.words == 160)
+    let wPerm = (try? FileManager.default.attributesOfItem(atPath: wURL.path)[.posixPermissions] as? Int) ?? 0
+    check("word counts file is owner-only", wPerm == 0o600)
+    let wText = (try? String(contentsOf: wURL, encoding: .utf8)) ?? ""
+    check("word counts file holds only numbers", wText.allSatisfy { "{}\":,0123456789".contains($0) })
+    try? FileManager.default.removeItem(at: wURL)
+    try? FileManager.default.removeItem(atPath: wURL.path + ".lock")
+
     print(failed == 0 ? "safety checks: all pass" : "safety checks: \(failed) failed")
     if failed > 0 { exit(1) }
 }
@@ -540,7 +593,55 @@ func cleanupChecks() async {
     print("clean up: \(cleanChanged)/\(clean) finished sentences changed")
 }
 
-if CommandLine.arguments.contains("--cleanup") { await cleanupChecks() }
+/// Your patterns per 1,000 words written (`--rates`): a light writing week must never look like progress.
+func rateChecks() {
+    var failed = 0
+    func check(_ name: String, _ ok: Bool) { print(ok ? "  pass" : "  FAIL", name); if !ok { failed += 1 } }
+    let now = Date(), day = 86_400.0
+    func fix(_ daysAgo: Double, _ lesson: String = "its-its") -> MistakeRecord {
+        MistakeRecord(date: now.addingTimeInterval(-daysAgo * day), lesson: lesson, title: "its and it's", original: "its", replacement: "it's", app: "test")
+    }
+    func words(_ perWeek: [Int]) -> [(date: Date, words: Int)] {  // oldest first, the last is this week; logged early in each week
+        perWeek.enumerated().map { i, n in (now.addingTimeInterval(-Double(perWeek.count - 1 - i) * 7 * day - 6.5 * day), n) }
+    }
+    // Four weeks of 2 fixes in 1,000 words, then a quiet week: 1 fix in 200 words.
+    /// `perWeek` fixes in each of the `weeks` weeks before this one.
+    func earlier(_ perWeek: Int, weeks: Int = 4) -> [MistakeRecord] {
+        var out: [MistakeRecord] = []
+        for w in 1...weeks { for k in 0..<perWeek { out.append(fix(Double(w) * 7 + 1 + Double(k) * 2)) } }
+        return out
+    }
+    var recs: [MistakeRecord] = earlier(2) + [fix(1)]
+    var s = PatternSummary(recs, words: words([1000, 1000, 1000, 1000, 200]), now: now)
+    check("quiet week is not called progress", s.rows.first?.trend == "too little writing to compare")
+    check("quiet week gets no rate", s.rateThisWeek == nil && s.rateLine == "Not enough writing this week for a rate per 1,000 words")
+    // Same counts, normal writing: 1 fix in 1,000 words is down from 2.
+    s = PatternSummary(recs, words: words([1000, 1000, 1000, 1000, 1000]), now: now)
+    check("fewer fixes in the same writing is down", s.rows.first?.trend == "1 per 1,000 words, down from 2")
+    check("rate line shows this week and last", s.rateLine == "1 per 1,000 words you wrote, 2 the week before")
+    // Same fixes as usual but twice the writing: the rate halves, the raw count would say "about the same".
+    recs = earlier(2) + [fix(1), fix(3)]
+    s = PatternSummary(recs, words: words([1000, 1000, 1000, 1000, 2000]), now: now)
+    check("same count in more writing is down", s.rows.first?.trend == "1 per 1,000 words, down from 2")
+    // More fixes per word: up.
+    recs = earlier(1) + [fix(1), fix(2), fix(3)]
+    s = PatternSummary(recs, words: words([1000, 1000, 1000, 1000, 1000]), now: now)
+    check("more fixes per word is up", s.rows.first?.trend == "3 per 1,000 words, up from 1")
+    check("rate shows one decimal", PatternSummary.format(2.46) == "2.5" && PatternSummary.format(3.0) == "3")
+    // Before Redpen counted words: the old count trend, and no rate line.
+    recs = earlier(2) + [fix(1)]
+    s = PatternSummary(recs, now: now)
+    check("without word counts the old trend stays", s.rows.first?.trend == "down from about 2 a week" && s.rateLine == nil)
+    // Counting began this week: fixes from before have no words, so no rate comparison and no false "down".
+    s = PatternSummary(recs, words: [(now.addingTimeInterval(-2 * day), 1500)], now: now)
+    check("fixes from before counting began aren't compared", s.rows.first?.trend == "down from about 2 a week")
+    check("first counted week has a rate", s.rateThisWeek.map { PatternSummary.format($0) } == "0.7")
+    print(failed == 0 ? "rate checks: all pass" : "rate checks: \(failed) failed")
+    if failed > 0 { exit(1) }
+}
+
+if CommandLine.arguments.contains("--rates") { rateChecks() }
+else if CommandLine.arguments.contains("--cleanup") { await cleanupChecks() }
 else if CommandLine.arguments.contains("--tips-check") { await tipChecks() }
 else if CommandLine.arguments.contains("--tips") { await tipNoise() }
 else if CommandLine.arguments.contains("--context") { await contextChecks() }

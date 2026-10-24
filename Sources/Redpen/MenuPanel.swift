@@ -67,7 +67,7 @@ final class PanelModel: ObservableObject {
         status = s.text; live = s.live
         canDeepCheck = host.canDeepCheck
         deepName = host.config.deepCheckWith == "auto" ? autoName() : host.config.deepCheckName
-        summary = PatternSummary(Mistakes.shared.all())
+        summary = PatternSummary(Mistakes.shared.all(), words: WordLog.shared.all())
         if Date().timeIntervalSince(helpersCheckedAt) > 300 { checkHelpers(claudePath: host.config.claudeExecutable) }
     }
 
@@ -333,6 +333,9 @@ struct PanelView: View {
                 Text("\(model.summary.thisWeek)").font(Fonts.serif(32, .semibold)).monospacedDigit()
                 Text("fix\(model.summary.thisWeek == 1 ? "" : "es") this week, \(model.summary.lastWeek) the week before").foregroundStyle(.secondary)
             }
+            if let line = model.summary.rateLine {
+                Text(line).font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             ForEach(Array((model.showAll ? model.summary.rows : Array(model.summary.rows.prefix(3))).enumerated()), id: \.offset) { _, r in
                 patternRow(r)
             }
@@ -358,7 +361,7 @@ struct PanelView: View {
                     }
                 }
                 .font(Fonts.serif(17))
-                Text("\(r.thisWeek) time\(r.thisWeek == 1 ? "" : "s") \u{00B7} \(r.trend)").font(.system(size: 13)).foregroundStyle(.secondary)
+                Text(r.perWords ? r.trend : "\(r.thisWeek) time\(r.thisWeek == 1 ? "" : "s") \u{00B7} \(r.trend)").font(.system(size: 13)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
             spark(r.weeks, tint: tint)
