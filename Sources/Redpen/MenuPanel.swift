@@ -205,6 +205,39 @@ enum Fonts {
     /// Newsreader's lowercase is shorter than New York's; 10% larger reads at the same size.
     static var scale: CGFloat { useNewsreader ? 1.1 : 1 }
 
+    /// The menu bar mark: the app icon's Gloock "r." without its tile (Resources/Icon/icon-source.html, same
+    /// placement), drawn as a template so the Mac colours it for a light or dark menu bar. Nil if Gloock is missing.
+    static func menuBarMark() -> NSImage? {
+        let font = CTFontCreateWithName("Gloock-Regular" as CFString, 600, nil)
+        guard CTFontCopyPostScriptName(font) as String == "Gloock-Regular" else { return nil }
+        let chars = Array("r".utf16)
+        var glyph = CGGlyph()
+        guard CTFontGetGlyphsForCharacters(font, chars, &glyph, 1) else { return nil }
+        // Placed as in the icon drawing, with the baseline at 0: the letter centred on x 470, the dot at x 690 and
+        // 38 above the baseline.
+        let advance = CTFontGetAdvancesForGlyphs(font, .horizontal, [glyph], nil, 1)
+        var at = CGAffineTransform(translationX: 470 - advance / 2, y: 0)
+        guard let letter = CTFontCreatePathForGlyph(font, glyph, &at) else { return nil }
+        let mark = CGMutablePath()
+        mark.addPath(letter)
+        mark.addEllipse(in: CGRect(x: 690 - 52, y: 38 - 52, width: 104, height: 104))
+        let box = mark.boundingBoxOfPath
+        let height: CGFloat = 12, s = height / box.height
+        let image = NSImage(size: NSSize(width: ceil(box.width * s) + 2, height: 18), flipped: false) { rect in
+            guard let cg = NSGraphicsContext.current?.cgContext else { return false }
+            cg.translateBy(x: (rect.width - box.width * s) / 2, y: (rect.height - height) / 2)
+            cg.scaleBy(x: s, y: s)
+            cg.translateBy(x: -box.minX, y: -box.minY)
+            cg.addPath(mark)
+            cg.setFillColor(NSColor.black.cgColor)
+            cg.fillPath()
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = "Redpen"
+        return image
+    }
+
     /// The exact style, named outright: a family-wide lookup picked italic for upright text.
     static func styleName(bold: Bool, medium: Bool, italic: Bool) -> String? {
         guard useNewsreader else { return nil }

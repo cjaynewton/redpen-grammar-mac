@@ -31,7 +31,8 @@ cp .build/out/Products/Release/Redpen "$APP/Contents/MacOS/Redpen"
 # Sparkle, for one-click updates. Redpen is not sandboxed, so Sparkle's two helper services for sandboxed apps are left out.
 cp -R .build/out/Products/Release/Sparkle.framework "$APP/Contents/Frameworks/"
 rm -rf "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/XPCServices" "$APP/Contents/Frameworks/Sparkle.framework/XPCServices"
-# Newsreader, the card and panel serif (SIL Open Font License, Resources/Fonts/OFL.txt).
+# Newsreader, the card and panel serif, and Gloock, the menu bar "r." (SIL Open Font License,
+# Resources/Fonts/OFL.txt and OFL-Gloock.txt).
 mkdir -p "$APP/Contents/Resources"
 cp -R Resources/Fonts "$APP/Contents/Resources/Fonts"
 # The app icon: a Gloock "r." in the Retail Dark palette (Resources/Icon/icon-source.html is the drawing).
@@ -45,8 +46,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleExecutable</key><string>Redpen</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.10</string>
-  <key>CFBundleVersion</key><string>10</string>
+  <key>CFBundleShortVersionString</key><string>0.11</string>
+  <key>CFBundleVersion</key><string>11</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>SUFeedURL</key><string>https://github.com/cjaynewton/redpen-grammar-mac/releases/latest/download/appcast.xml</string>

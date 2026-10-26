@@ -152,7 +152,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, PanelHost {
         }
         panel = MenuPanel(host: self)
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        status.button?.image = NSImage(systemSymbolName: "pencil.and.scribble", accessibilityDescription: "Redpen")
+        status.button?.image = Fonts.menuBarMark()
+            ?? NSImage(systemSymbolName: "pencil.and.scribble", accessibilityDescription: "Redpen")
         status.button?.target = self
         status.button?.action = #selector(statusClicked)
 
