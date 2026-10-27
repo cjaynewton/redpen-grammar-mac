@@ -46,13 +46,14 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleExecutable</key><string>Redpen</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.11</string>
-  <key>CFBundleVersion</key><string>11</string>
+  <key>CFBundleShortVersionString</key><string>0.12</string>
+  <key>CFBundleVersion</key><string>12</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>SUFeedURL</key><string>https://github.com/cjaynewton/redpen-grammar-mac/releases/latest/download/appcast.xml</string>
   <key>SUPublicEDKey</key><string>$SPARKLE_PUBLIC_KEY</string>
   <key>SUEnableAutomaticChecks</key><true/>
+  <key>SUScheduledCheckInterval</key><integer>14400</integer>
   <key>NSAppleEventsUsageDescription</key><string>Redpen reads the text you type to check it.</string>
 </dict></plist>
 PLIST

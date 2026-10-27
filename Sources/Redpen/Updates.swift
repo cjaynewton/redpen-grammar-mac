@@ -1,14 +1,14 @@
 import AppKit
 import Sparkle
 
-/// Updates through Sparkle. Once a day Redpen asks the release page for the latest version number; nothing you
+/// Updates through Sparkle. Every 4 hours Redpen asks the release page for the latest version number; nothing you
 /// write is sent. A new version is checked against Redpen's signing key before it installs.
 @MainActor
 final class Updates: NSObject, ObservableObject, SPUStandardUserDriverDelegate {
     static let shared = Updates()
     private var controller: SPUStandardUpdaterController?
 
-    /// The version waiting to install, found by the daily check. The menu shows it instead of popping up a window
+    /// The version waiting to install, found by the regular check. The menu shows it instead of popping up a window
     /// over whatever you are writing.
     @Published private(set) var waiting: String?
 
@@ -38,7 +38,7 @@ final class Updates: NSObject, ObservableObject, SPUStandardUserDriverDelegate {
     /// For drawing the menu with an update waiting (`REDPEN_FAKE_UPDATE=0.9 Redpen --render-panel`).
     func pretendWaiting(_ version: String) { waiting = version }
 
-    // A menu-bar app is rarely in front, so a daily check that finds an update marks the menu instead.
+    // A menu-bar app is rarely in front, so a scheduled check that finds an update marks the menu instead.
     nonisolated var supportsGentleScheduledUpdateReminders: Bool { true }
 
     nonisolated func standardUserDriverShouldHandleShowingScheduledUpdate(_ update: SUAppcastItem, andInImmediateFocus immediateFocus: Bool) -> Bool {

@@ -462,7 +462,7 @@ struct PanelView: View {
     private var footer: some View {
         HStack {
             if let v = updates.waiting {
-                // An update found by the daily check waits here rather than interrupting your writing.
+                // An update found by the regular check waits here rather than interrupting your writing.
                 Button("Update to \(v) \u{203A}") { model.leave(); updates.checkNow() }
                     .buttonStyle(.plain).foregroundStyle(Color(nsColor: IssueKind.spelling.color)).font(.system(size: 13, weight: .medium))
             } else {

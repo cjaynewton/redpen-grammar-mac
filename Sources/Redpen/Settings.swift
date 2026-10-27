@@ -219,7 +219,7 @@ struct SettingsPage: View {
                 Group {
                     Switch(label: "Check my writing", on: $model.config.enabled)
                     Switch(label: "Open at login", on: $model.openAtLogin)
-                    Row(label: "Check for updates", sub: "Once a day. Nothing you write is sent.") {
+                    Row(label: "Check for updates", sub: "Every 4 hours. Nothing you write is sent.") {
                         HStack(spacing: 10) {
                             Button("Check now") { Updates.shared.checkNow() }
                             Toggle("Check for updates", isOn: $model.autoUpdate).toggleStyle(.switch).labelsHidden().tint(.green)
