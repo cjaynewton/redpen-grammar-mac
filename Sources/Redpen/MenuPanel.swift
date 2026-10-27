@@ -318,20 +318,22 @@ struct PanelView: View {
 
     /// A waiting update across the top of the menu, so it is the first thing seen when the menu opens.
     private func updateBanner(_ version: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "arrow.down.circle.fill").font(.system(size: 18)).foregroundStyle(Color.accentColor)
+        // Redpen red, the spelling-mistake colour, so a new version stands out from the blue links (D-843).
+        let red = Color(nsColor: IssueKind.spelling.color)
+        return HStack(spacing: 12) {
+            Image(systemName: "arrow.down.circle.fill").font(.system(size: 18)).foregroundStyle(red)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Redpen \(version) is ready").fontWeight(.semibold)
                 Text("Installs in a few seconds, then Redpen restarts").font(.system(size: 12.5)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
             Button("Install") { model.leave(); updates.checkNow() }
-                .buttonStyle(.borderedProminent).tint(.accentColor).controlSize(.regular)
+                .buttonStyle(.borderedProminent).tint(red).controlSize(.regular)
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
-        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.accentColor.opacity(0.35)))
+        .background(red.opacity(0.10), in: RoundedRectangle(cornerRadius: 4))
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(red.opacity(0.45)))
     }
 
     private var permission: some View {
@@ -462,7 +464,7 @@ struct PanelView: View {
             if let v = updates.waiting {
                 // An update found by the daily check waits here rather than interrupting your writing.
                 Button("Update to \(v) \u{203A}") { model.leave(); updates.checkNow() }
-                    .buttonStyle(.plain).foregroundStyle(Color.accentColor).font(.system(size: 13, weight: .medium))
+                    .buttonStyle(.plain).foregroundStyle(Color(nsColor: IssueKind.spelling.color)).font(.system(size: 13, weight: .medium))
             } else {
                 Text("Redpen \(About.version)").font(.system(size: 13)).foregroundStyle(.tertiary)
             }
