@@ -35,6 +35,7 @@ final class WelcomeWindow: NSObject {
                          styleMask: [.titled, .closable], backing: .buffered, defer: false)
         w.title = "Welcome to Redpen Grammar"
         w.isReleasedWhenClosed = false
+        w.delegate = self
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -84,8 +85,18 @@ final class WelcomeWindow: NSObject {
     }
 
     @objc private func finish() {
-        timer?.invalidate()
         window?.orderOut(nil)
+        done()
+    }
+
+    /// Done or the close button: either way the welcome has been seen, and the once-a-second check stops.
+    private func done() {
+        timer?.invalidate()
+        timer = nil
         onDone?()
     }
+}
+
+extension WelcomeWindow: NSWindowDelegate {
+    func windowWillClose(_ notification: Notification) { done() }
 }
