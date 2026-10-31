@@ -140,8 +140,9 @@ public enum Rules {
         return try! NSRegularExpression(pattern: alts, options: [.caseInsensitive])
     }()
 
-    // "you're revised invoice", "they're latest catalog": these words only ever follow something owned.
-    static let owned = "(?:latest|newest|own|first|next|last|final|revised|updated|current|favourite|favorite|main|usual|previous|original|entire|whole|upcoming|existing|new|old|recent|monthly|weekly|annual|yearly|daily)"
+    // "you're revised invoice", "they're latest catalog": these words only ever follow something owned. Not "new",
+    // "old" or "recent": "We're new customers", "It's old news" and "they're recent hires" are right as written.
+    static let owned = "(?:latest|newest|own|next|final|revised|updated|current|favourite|favorite|main|usual|previous|original|entire|whole|upcoming|existing|monthly|weekly|annual|yearly|daily)"
     static let contractedOwner = try! NSRegularExpression(pattern: "\\b(you['\u{2019}]re|they['\u{2019}]re|we['\u{2019}]re|it['\u{2019}]s) \(owned) [a-z]+\\b(?! (?:is|are|was|were|and|or|but|to|for|of|in|on|at|with|by|from|as|than|so|that|if|when|because)\\b)", options: [.caseInsensitive])
     static let ownerForm = ["you're": "your", "they're": "their", "we're": "our", "it's": "its"]
     // "add you're initials", "replacing it's damaged trim": right after a verb that takes a thing, or a preposition,

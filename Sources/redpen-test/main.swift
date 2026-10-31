@@ -447,6 +447,9 @@ func safetyChecks() {
     }
     check("\u{201C}Sarah and her team\u{201D} is left alone", grammarFix("Sarah and her team are coming.") == "Sarah and her team are coming.")
     check("\u{201C}Sam and me went\u{201D} is still fixed", grammarFix("Sam and me went to the store.").hasPrefix("Sam and I went"))
+    check("\u{201C}We\u{2019}re new customers\u{201D} is left alone", grammarFix("We're new customers.") == "We're new customers.")
+    check("\u{201C}It\u{2019}s old news\u{201D} is left alone", grammarFix("It's old news here.") == "It's old news here.")
+    check("\u{201C}you\u{2019}re revised invoice\u{201D} is still fixed", grammarFix("Send you're revised invoice today.").contains("your revised invoice"))
     // A settings file with a typo is copied aside before Redpen can save over it (review Oct 31 2026).
     let cDir = FileManager.default.temporaryDirectory.appendingPathComponent("redpen-config-\(UUID().uuidString)")
     try? FileManager.default.createDirectory(at: cDir, withIntermediateDirectories: true)
