@@ -321,7 +321,9 @@ final class DeepCheck {
         }
         if done.wait(timeout: .now() + limit) == .timedOut {
             p.terminate()
-            return "\(job.name) didn\u{2019}t answer within \(Int(limit / 60)) minutes. Try again, or check a shorter piece."
+            // Test connection waits 90 seconds, which read as "1 minutes".
+            let wait = limit < 120 ? "\(Int(limit)) seconds" : "\(Int(limit / 60)) minutes"
+            return "\(job.name) didn\u{2019}t answer within \(wait). Try again, or check a shorter piece."
         }
         out.waitForEnd(seconds: 5)
         err.waitForEnd(seconds: 1)
