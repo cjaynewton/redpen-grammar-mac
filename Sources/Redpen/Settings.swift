@@ -531,7 +531,10 @@ struct AdvancedPage: View {
                     Row(label: "Every setting as text", sub: "Including the banks and apps Redpen skips") {
                         HStack(spacing: 12) {
                             Button("Open") { panel.leave(); NSWorkspace.shared.open(Config.url) }
-                            Button("Reload") { model.config = Config.load() }
+                            Button("Reload") {
+                                // A file with a typo is left alone: loading it would put the defaults in its place.
+                                if let c = Config.readable() { model.config = c } else { Private.keepUnreadable(Config.url); NSSound.beep() }
+                            }
                         }
                         .buttonStyle(.link)
                     }

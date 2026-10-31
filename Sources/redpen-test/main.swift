@@ -428,6 +428,21 @@ func safetyChecks() {
     check("an accent written another way counts as a change",
           WriteCheck.outcome(before: "caf\u{E9} its", expected: "caf\u{E9} it's", after: "cafe\u{301} its") == .unexpected)
 
+    // A settings file with a typo is copied aside before Redpen can save over it (review Oct 31 2026).
+    let cDir = FileManager.default.temporaryDirectory.appendingPathComponent("redpen-config-\(UUID().uuidString)")
+    try? FileManager.default.createDirectory(at: cDir, withIntermediateDirectories: true)
+    let cURL = cDir.appendingPathComponent("config.json")
+    let broken = Data(#"{"excludedApps": ["com.example.bank",], "calm": false}"#.utf8)
+    try? broken.write(to: cURL)
+    let kept = Private.keepUnreadable(cURL)
+    check("an unreadable settings file is copied aside", kept.flatMap { FileManager.default.contents(atPath: $0.path) } == broken)
+    check("the copy sits beside it with its own name", kept?.lastPathComponent.hasPrefix("config.unreadable-") == true && kept?.pathExtension == "json")
+    let cPerm = kept.flatMap { (try? FileManager.default.attributesOfItem(atPath: $0.path)[.posixPermissions]) as? Int } ?? 0
+    check("the copy is owner-only", cPerm == 0o600)
+    check("the same broken file is copied only once", Private.keepUnreadable(cURL) == nil)
+    check("no file, no copy", Private.keepUnreadable(cDir.appendingPathComponent("missing.json")) == nil)
+    try? FileManager.default.removeItem(at: cDir)
+
     print(failed == 0 ? "safety checks: all pass" : "safety checks: \(failed) failed")
     if failed > 0 { exit(1) }
 }

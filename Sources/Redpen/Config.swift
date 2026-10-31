@@ -132,11 +132,20 @@ struct Config: Codable {
         return dir.appendingPathComponent("config.json")
     }
 
+    /// The settings file, or nil when it is missing or can't be read.
+    static func readable() -> Config? {
+        guard let d = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(Config.self, from: d)
+    }
+
     static func load() -> Config {
-        if let d = try? Data(contentsOf: url), let c = try? JSONDecoder().decode(Config.self, from: d) { return c }
-        // Never overwrite a file that exists but failed to parse; a hand edit may have a typo.
+        if let c = readable() { return c }
+        // A file that exists but failed to parse may hold a hand edit with a typo. The next change in Settings saves
+        // over it, so keep a copy first; nothing in it is lost.
         var c = Config()
-        if !FileManager.default.fileExists(atPath: url.path) {
+        if FileManager.default.fileExists(atPath: url.path) {
+            if let copy = Private.keepUnreadable(url) { Log.note("settings file unreadable, kept a copy as \(copy.lastPathComponent)") }
+        } else {
             c.houseStyle.spelling = regionSpelling
             c.save()
         }

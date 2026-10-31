@@ -14,6 +14,26 @@ public enum Private {
         try? FileManager.default.setAttributes([.posixPermissions: isDir.boolValue ? 0o700 : 0o600], ofItemAtPath: url.path)
     }
 
+    /// Copies a file Redpen can't read (a settings file with a typo from a hand edit) to
+    /// "<name>.unreadable-<date>.<ext>" beside it, owner-only, so what was in it survives the next save over the
+    /// original. Nil when there is no file, or when a copy with the same contents is already there.
+    @discardableResult
+    public static func keepUnreadable(_ url: URL, now: Date = Date()) -> URL? {
+        let fm = FileManager.default
+        guard let data = fm.contents(atPath: url.path) else { return nil }
+        let dir = url.deletingLastPathComponent()
+        let stem = url.deletingPathExtension().lastPathComponent + ".unreadable-"
+        let earlier = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+        if earlier.contains(where: { $0.lastPathComponent.hasPrefix(stem) && fm.contents(atPath: $0.path) == data }) { return nil }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyyMMdd-HHmmss"
+        let ext = url.pathExtension.isEmpty ? "" : "." + url.pathExtension
+        let copy = dir.appendingPathComponent(stem + f.string(from: now) + ext)
+        guard fm.createFile(atPath: copy.path, contents: data, attributes: [.posixPermissions: 0o600]) else { return nil }
+        return copy
+    }
+
     /// Locks the folder and every file directly inside it, including older settings backups.
     public static func lockFolder() {
         lock(folder)
