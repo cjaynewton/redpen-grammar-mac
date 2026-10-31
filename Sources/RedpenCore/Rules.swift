@@ -75,7 +75,8 @@ public enum Rules {
 
     // Grammar slips the small model lets through.
     static let meAnd = try! NSRegularExpression(pattern: "(?:^|(?<=[.!?]\\s))(Me and ([A-Z][a-z]+|(?:the|my|our|your|his|her|their) [a-z]+))\\b(?=\\s+[a-z]+(?:ed|s)?\\b)")
-    static let andMe = try! NSRegularExpression(pattern: "(?:^|(?<=[.!?]\\s))([A-Z][a-z]+ and (me|him|her|us|them))\\b(?=\\s+[a-z]+(?:ed|s)?\\b)")
+    // No "her": "Sarah and her team are coming" is an owner, and "she team" would break the sentence.
+    static let andMe = try! NSRegularExpression(pattern: "(?:^|(?<=[.!?]\\s))([A-Z][a-z]+ and (me|him|us|them))\\b(?=\\s+[a-z]+(?:ed|s)?\\b)")
     static let eachHave = try! NSRegularExpression(pattern: "\\b(?:Each|Every one|Neither|Either) of (?:the |our |their |these |those )?\\w+ (have|are|were|do|don't)\\b", options: [.caseInsensitive])
 
     // "to you and she", "invited Maya and I": after a preposition or a verb, the pronoun takes its object form.

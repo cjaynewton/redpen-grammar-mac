@@ -436,6 +436,17 @@ func safetyChecks() {
     check("experts with no owner are still flagged",
           Rules.check("Experts say the filter lasts a year.", longform: false, style: sourced).contains { $0.tip == "unsourced" })
 
+    // Hand-written grammar fixes that broke correct sentences (review Oct 31 2026). These are sure fixes, so Fix all applied them.
+    func grammarFix(_ t: String) -> String {
+        var out = t as NSString
+        for i in Rules.check(t, longform: false).filter({ $0.kind == .grammar && !($0.replacements.first ?? "").isEmpty })
+            .sorted(by: { $0.range.location > $1.range.location }) {
+            out = out.replacingCharacters(in: i.range, with: i.replacements[0]) as NSString
+        }
+        return out as String
+    }
+    check("\u{201C}Sarah and her team\u{201D} is left alone", grammarFix("Sarah and her team are coming.") == "Sarah and her team are coming.")
+    check("\u{201C}Sam and me went\u{201D} is still fixed", grammarFix("Sam and me went to the store.").hasPrefix("Sam and I went"))
     // A settings file with a typo is copied aside before Redpen can save over it (review Oct 31 2026).
     let cDir = FileManager.default.temporaryDirectory.appendingPathComponent("redpen-config-\(UUID().uuidString)")
     try? FileManager.default.createDirectory(at: cDir, withIntermediateDirectories: true)
