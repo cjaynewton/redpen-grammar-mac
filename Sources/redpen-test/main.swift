@@ -414,6 +414,20 @@ func safetyChecks() {
     try? FileManager.default.removeItem(at: wURL)
     try? FileManager.default.removeItem(atPath: wURL.path + ".lock")
 
+    // A fix written straight into the field is pasted as well only when the app ignored the write (review Oct 31 2026).
+    // Before, any field that didn't read exactly as expected got the paste too, so a write the app accepted but
+    // auto-corrected ("its" in, "it’s" shown) or applied a moment late ended up in the text twice.
+    let wBefore = "The brand lost its shelf space.", wExpected = "The brand lost it's shelf space."
+    check("a write that landed needs no paste", WriteCheck.outcome(before: wBefore, expected: wExpected, after: wExpected) == .written)
+    check("a write the app ignored can be pasted", WriteCheck.outcome(before: wBefore, expected: wExpected, after: wBefore) == .untouched)
+    check("a write the app auto-corrected is never pasted on top",
+          WriteCheck.outcome(before: wBefore, expected: wExpected, after: "The brand lost it\u{2019}s shelf space.") == .unexpected)
+    check("a write that landed twice is never pasted a third time",
+          WriteCheck.outcome(before: wBefore, expected: wExpected, after: "The brand lost it'sit's shelf space.") == .unexpected)
+    check("an unreadable field is never pasted into", WriteCheck.outcome(before: wBefore, expected: wExpected, after: nil) == .unexpected)
+    check("an accent written another way counts as a change",
+          WriteCheck.outcome(before: "caf\u{E9} its", expected: "caf\u{E9} it's", after: "cafe\u{301} its") == .unexpected)
+
     print(failed == 0 ? "safety checks: all pass" : "safety checks: \(failed) failed")
     if failed > 0 { exit(1) }
 }

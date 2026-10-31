@@ -732,15 +732,38 @@ final class Watcher {
         guard AX.setRange(el, issue.range) else { NSSound.beep(); return nil }
         Mistakes.shared.record(issue, replacement: replacement, app: bundleID)
         let expected = ns.replacingCharacters(in: issue.range, with: replacement)
-        if AX.set(el, kAXSelectedTextAttribute, replacement as CFString),
-           let after: String = AX.attr(el, kAXValueAttribute), after == expected {
+        let wrote = AX.set(el, kAXSelectedTextAttribute, replacement as CFString)
+        var outcome = WriteCheck.outcome(before: text, expected: expected, after: AX.attr(el, kAXValueAttribute))
+        // Browsers can apply a write a moment after accepting it. Give an accepted write a short while to show
+        // before deciding the app ignored it, or the paste below would put the fix in a second time.
+        let until = Date().addingTimeInterval(0.3)
+        while wrote, outcome == .untouched, Date() < until {
+            usleep(30_000)
+            outcome = WriteCheck.outcome(before: text, expected: expected, after: AX.attr(el, kAXValueAttribute))
+        }
+        switch outcome {
+        case .written:
             lastText = ""
             return false
+        case .unexpected:
+            // The write changed the text, just not into the expected form (auto-correct, smart quotes, a partial
+            // write). Pasting now would add the fix again on top, so stop and leave the field as it is.
+            Log.note("fix: the field changed in an unexpected way after the write, not pasted")
+            NSSound.beep()
+            lastText = ""
+            return nil
+        case .untouched:
+            break
         }
         // Some apps (Electron, Office) ignore direct writes. Paste over the selection instead, but only if the
-        // field is still the one in focus: Cmd+V goes wherever the cursor is now.
-        guard stillFocused(el) else { Log.note("fix: not pasted, focus moved"); NSSound.beep(); return nil }
-        Paste.replaceSelection(with: replacement)
+        // field is still the one in focus and still reads as before: Cmd+V goes wherever the cursor is now.
+        guard stillFocused(el), AX.setRange(el, issue.range) else { Log.note("fix: not pasted, focus moved"); NSSound.beep(); return nil }
+        let pasted = Paste.replaceSelection(with: replacement) { [self] in
+            let now: String? = AX.attr(el, kAXValueAttribute)
+            return now.map { $0.utf16.elementsEqual(text.utf16) } == true && AX.range(el, kAXSelectedTextRangeAttribute) == issue.range
+                && stillFocused(el)
+        }
+        guard pasted else { Log.note("fix: not pasted, the field or selection changed"); NSSound.beep(); return nil }
         lastText = ""
         return true
     }
