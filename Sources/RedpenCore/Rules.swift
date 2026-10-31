@@ -123,17 +123,19 @@ public enum Rules {
         "recommended", "ensure", "ensured", "doubt", "doubted", "mind", "pretend", "sure", "glad", "is", "was", "are",
         "were", "be", "been", "am", "like"])
 
-    /// Fixed pairs where one preposition is right: "interested in", "proud of", "reply to".
+    /// Fixed pairs where one preposition is right: "interested in", "proud of". Pairs that are also correct English
+    /// are left out: "reply at your earliest convenience", "depends in part on", "afraid for him", "married with two
+    /// kids", "insisted to the board that".
     static let collocations: [(String, [String], String)] = [
         ("interested", ["on", "at", "for"], "in"), ("proud", ["for", "about", "on"], "of"), ("allergic", ["of", "for", "from"], "to"),
-        ("reply", ["at"], "to"), ("replied", ["at"], "to"), ("look forward", ["for", "on"], "to"), ("looking forward", ["for", "on"], "to"),
-        ("insist", ["for", "in", "to"], "on"), ("insisted", ["for", "in", "to"], "on"), ("depend", ["of", "in", "from"], "on"),
-        ("depends", ["of", "in", "from"], "on"), ("consist", ["in", "from"], "of"), ("consists", ["in", "from"], "of"),
-        ("capable", ["to", "for"], "of"), ("responsible", ["of", "on"], "for"), ("afraid", ["from", "for"], "of"),
+        ("look forward", ["for", "on"], "to"), ("looking forward", ["for", "on"], "to"),
+        ("insist", ["for", "in"], "on"), ("insisted", ["for", "in"], "on"), ("depend", ["of", "from"], "on"),
+        ("depends", ["of", "from"], "on"), ("consist", ["in", "from"], "of"), ("consists", ["in", "from"], "of"),
+        ("capable", ["to", "for"], "of"), ("responsible", ["of", "on"], "for"), ("afraid", ["from"], "of"),
         ("comply", ["to"], "with"), ("complies", ["to"], "with"), ("complied", ["to"], "with"), ("complying", ["to"], "with"),
         ("similar", ["with"], "to"), ("aware", ["about"], "of"), ("superior", ["than"], "to"), ("inferior", ["than"], "to"),
         ("refer", ["at", "on"], "to"), ("refers", ["at", "on"], "to"), ("referred", ["at", "on"], "to"),
-        ("married", ["with"], "to"), ("listen", ["at"], "to"), ("listened", ["at"], "to"), ("entitled", ["a", "an", "the", "one"], "to"),
+        ("listen", ["at"], "to"), ("listened", ["at"], "to"), ("entitled", ["a", "an", "the", "one"], "to"),
     ]
     static let collocationRegex: NSRegularExpression = {
         let alts = collocations.map { "(?:\\b\($0.0) (?:\($0.1.joined(separator: "|")))\\b)" }.joined(separator: "|")
