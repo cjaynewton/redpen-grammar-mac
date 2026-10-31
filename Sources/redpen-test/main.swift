@@ -769,7 +769,25 @@ func reviewChecks() {
     // 1.13 Inch marks are not quotation marks.
     check("1.13 inch marks don't hide the words between them", Engine.quoteRanges(in: "Use a 2\" pipe and a 3\" valve.").isEmpty)
 
-    // GRAMMAR-CHECKS
+    // 1.14 Hand-written grammar fixes that change correct sentences. These are sure fixes, so Fix all applies them.
+    func fixed(_ t: String, _ style: HouseStyle = HouseStyle()) -> String {
+        var out = t as NSString
+        for i in Rules.check(t, longform: false, style: style).filter({ $0.kind != .voice && !($0.replacements.first ?? "").isEmpty })
+            .sorted(by: { $0.range.location > $1.range.location }) {
+            out = out.replacingCharacters(in: i.range, with: i.replacements[0]) as NSString
+        }
+        return out as String
+    }
+    for t in ["Me and my new manager met today.", "Can we get two small and one large?", "She wrote a report entitled The Future of Work.",
+              "Our boxes are blue but the supplier's are green.", "In the long term investors will benefit.",
+              "Submit one time sheet per week.", "These are the policies that affect this team.", "Our biggest expense was stationery.",
+              "We appreciate your coming in today.", "If there was a problem, we would have heard.", "Let them hear by Friday."] {
+        check("1.14 left alone: \(t)", fixed(t) == t)
+    }
+    var colons = HouseStyle()
+    colons.colonsOnlyForLabels = true
+    check("1.14 a colon fix never joins two lines",
+          fixed("Here is what we agreed in the meeting today:\nWe will ship on Friday.", colons).contains("\n"))
     print(failed == 0 ? "review checks: all pass" : "review checks: \(failed) failed (see REVIEW_2026-10-31.md)")
     if failed > 0 { exit(1) }
 }
