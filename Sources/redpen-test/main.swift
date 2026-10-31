@@ -713,7 +713,50 @@ func rateChecks() {
     if failed > 0 { exit(1) }
 }
 
-if CommandLine.arguments.contains("--rates") { rateChecks() }
+/// Bugs found in the Oct 31 2026 review that are not fixed yet (`--review`). Each check fails until its bug is fixed;
+/// the section number points into REVIEW_2026-10-31.md. Once a check passes, move it into `--safety`.
+@MainActor
+func reviewChecks() {
+    var failed = 0
+    func check(_ name: String, _ ok: Bool) { print(ok ? "  pass" : "  FAIL", name); if !ok { failed += 1 } }
+    func tips(_ text: String, _ ids: [String]) -> [Issue] {
+        var style = HouseStyle()
+        style.starterSets = ids
+        return Rules.check(text, longform: false, style: style).filter { $0.tip != nil }
+    }
+    /// The text once every tip fix found in it is accepted, last first.
+    func accepted(_ text: String, _ ids: [String]) -> String {
+        var out = text as NSString
+        for i in tips(text, ids).filter({ !$0.replacements.isEmpty }).sorted(by: { $0.range.location > $1.range.location }) {
+            out = out.replacingCharacters(in: i.range, with: i.replacements[0]) as NSString
+        }
+        return out as String
+    }
+
+    // 1.12 Style tips whose fix garbles the sentence.
+    check("1.12 softeners keep a \u{201C}that\u{201D} that points at a noun",
+          accepted("I think that quote is too high.", ["softeners"]).lowercased().contains("that quote"))
+    check("1.12 softeners leave a question alone", tips("What do I think?", ["softeners"]).isEmpty)
+    check("1.12 \u{201C}a different kind of\u{201D} is not a softener", tips("We offer a different kind of warranty.", ["softeners"]).isEmpty)
+    check("1.12 \u{201C}made a payment of\u{201D} never becomes \u{201C}paid of\u{201D}",
+          !accepted("We made a payment of $400.", ["nominal"]).contains("paid of"))
+    check("1.12 comparing quotes is not a promise", tips("Of the three quotes, the second is the best.", ["promises"]).isEmpty)
+
+    // 1.13 Deep check replies with Windows line endings.
+    check("1.13 a reply with CRLF line endings still gives the revised text",
+          DeepReplace.revised(from: "REVISED\r\nFine.\r\n\r\nCHANGES\r\n- x\r\n") == "Fine.")
+    check("1.13 a reply with CRLF line endings is well formed", DeepReplace.wellFormed("REVISED\r\nFine.\r\n\r\nCHANGES\r\n- x\r\n"))
+
+    // 1.13 Inch marks are not quotation marks.
+    check("1.13 inch marks don't hide the words between them", Engine.quoteRanges(in: "Use a 2\" pipe and a 3\" valve.").isEmpty)
+
+REVIEW_GRAMMAR_PLACEHOLDER
+    print(failed == 0 ? "review checks: all pass" : "review checks: \(failed) failed (see REVIEW_2026-10-31.md)")
+    if failed > 0 { exit(1) }
+}
+
+if CommandLine.arguments.contains("--review") { reviewChecks() }
+else if CommandLine.arguments.contains("--rates") { rateChecks() }
 else if CommandLine.arguments.contains("--cleanup") { await cleanupChecks() }
 else if CommandLine.arguments.contains("--tips-check") { await tipChecks() }
 else if CommandLine.arguments.contains("--tips") { await tipNoise() }
