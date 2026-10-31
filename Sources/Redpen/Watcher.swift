@@ -730,7 +730,6 @@ final class Watcher {
         let ns = text as NSString
         guard NSMaxRange(issue.range) <= ns.length, ns.substring(with: issue.range) == issue.original else { NSSound.beep(); return nil }
         guard AX.setRange(el, issue.range) else { NSSound.beep(); return nil }
-        Mistakes.shared.record(issue, replacement: replacement, app: bundleID)
         let expected = ns.replacingCharacters(in: issue.range, with: replacement)
         let wrote = AX.set(el, kAXSelectedTextAttribute, replacement as CFString)
         var outcome = WriteCheck.outcome(before: text, expected: expected, after: AX.attr(el, kAXValueAttribute))
@@ -743,6 +742,7 @@ final class Watcher {
         }
         switch outcome {
         case .written:
+            Mistakes.shared.record(issue, replacement: replacement, app: bundleID)
             lastText = ""
             return false
         case .unexpected:
@@ -764,6 +764,8 @@ final class Watcher {
                 && stillFocused(el)
         }
         guard pasted else { Log.note("fix: not pasted, the field or selection changed"); NSSound.beep(); return nil }
+        // Only a fix that went in counts towards Your patterns.
+        Mistakes.shared.record(issue, replacement: replacement, app: bundleID)
         lastText = ""
         return true
     }
