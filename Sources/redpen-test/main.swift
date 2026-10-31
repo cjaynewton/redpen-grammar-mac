@@ -428,6 +428,14 @@ func safetyChecks() {
     check("an accent written another way counts as a change",
           WriteCheck.outcome(before: "caf\u{E9} its", expected: "caf\u{E9} it's", after: "cafe\u{301} its") == .unexpected)
 
+    // "Our experts recommend" names its source; cutting it left "Our replacing the filter yearly." (review Oct 31 2026).
+    var sourced = HouseStyle()
+    sourced.starterSets = ["unsourced"]
+    check("experts with an owner are a named source",
+          Rules.check("Our experts recommend replacing the filter yearly.", longform: false, style: sourced).allSatisfy { $0.tip != "unsourced" })
+    check("experts with no owner are still flagged",
+          Rules.check("Experts say the filter lasts a year.", longform: false, style: sourced).contains { $0.tip == "unsourced" })
+
     // A settings file with a typo is copied aside before Redpen can save over it (review Oct 31 2026).
     let cDir = FileManager.default.temporaryDirectory.appendingPathComponent("redpen-config-\(UUID().uuidString)")
     try? FileManager.default.createDirectory(at: cDir, withIntermediateDirectories: true)

@@ -179,7 +179,8 @@ public struct StyleTip: Sendable {
         matchers: [
             // Only with no owner in front: "our research shows" names its source.
             Matcher(regex: re("(?<!\\b(?:our|my|the|this|that|their|his|her|its|a|new|recent) )\\b(?:studies|research|science|surveys) (?:show|shows|suggest|suggests|prove|proves|has shown|have shown|says|say)(?: that)?\\b"), cut: true),
-            Matcher(regex: re("\\b(?:many |most |some )?experts (?:say|agree|believe|recommend)(?: that)?\\b"), cut: true),
+            // "Our experts recommend" names its source too, and cutting it would leave "Our replacing the filter".
+            Matcher(regex: re("(?<!\\b(?:our|my|the|this|that|their|his|her|its|your|whose|these|those) )\\b(?:many |most |some )?experts (?:say|agree|believe|recommend)(?: that)?\\b"), cut: true),
             Matcher(regex: re("\\b(?:it is|it's|it\u{2019}s) (?:widely|well|commonly) (?:known|accepted|believed)(?: that)?\\b"), cut: true),
             Matcher(regex: re("\\b(?:some|many|most) people (?:say|think|believe)(?: that)?\\b|\\beveryone knows(?: that)?\\b"), cut: true),
             Matcher(regex: re("\\barguably\\b"), cut: true),
