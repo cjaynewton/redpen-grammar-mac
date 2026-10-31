@@ -750,7 +750,7 @@ func reviewChecks() {
     // 1.13 Inch marks are not quotation marks.
     check("1.13 inch marks don't hide the words between them", Engine.quoteRanges(in: "Use a 2\" pipe and a 3\" valve.").isEmpty)
 
-REVIEW_GRAMMAR_PLACEHOLDER
+    // GRAMMAR-CHECKS
     print(failed == 0 ? "review checks: all pass" : "review checks: \(failed) failed (see REVIEW_2026-10-31.md)")
     if failed > 0 { exit(1) }
 }
