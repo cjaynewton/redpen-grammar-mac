@@ -151,7 +151,9 @@ enum Helpers {
     /// That one asks Google's servers, so it runs in the background like the other checks.
     static func gemini() -> HelperRow.State {
         guard let path = Config.firstExecutable("agy") else { return .notSetUp("Install Google\u{2019}s Antigravity CLI to use your Google AI plan") }
-        return run(path, ["models"]).localizedCaseInsensitiveContains("sign in") ? .notSetUp("Sign in: open Terminal, run agy once") : .connected
+        // No answer at all (timed out, couldn't start, printed nothing) is not proof of a sign-in.
+        let out = run(path, ["models"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return out.isEmpty || out.localizedCaseInsensitiveContains("sign in") ? .notSetUp("Sign in: open Terminal, run agy once") : .connected
     }
 
     /// Runs a helper with fixed arguments (never through a shell) and returns what it printed.
