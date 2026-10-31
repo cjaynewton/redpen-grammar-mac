@@ -747,9 +747,9 @@ final class Watcher {
             return false
         case .unexpected:
             // The write changed the text, just not into the expected form (auto-correct, smart quotes, a partial
-            // write). Pasting now would add the fix again on top, so stop and leave the field as it is.
+            // write). Pasting now would add the fix again on top, so stop and leave the field as it is. No beep: in
+            // the usual case (smart quotes) the fix did go in, only styled by the app.
             Log.note("fix: the field changed in an unexpected way after the write, not pasted")
-            NSSound.beep()
             lastText = ""
             return nil
         case .untouched:
